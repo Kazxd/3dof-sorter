@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+ENV/
+
+# VS Code / editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local environment variables
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# YOLO / training artifacts
+# These are generated after cloning and running setup/training steps.
+runs/
+wandb/
+mlruns/
+*.cache
+*.pt
+*.weights
+*.onnx
+*.engine
+*.torchscript
+*.tflite
+*.safetensors
+best/
+yolov8n/
+
+# Generated preview images
+class_preview/
+
+# Local datasets and downloaded data
+# Keep the project dataset in the repo if you want a fresh clone to be
+# reproducible without downloading it separately.
+datasets/
+dataset/
+data/
