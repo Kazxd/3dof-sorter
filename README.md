@@ -55,24 +55,31 @@ pip install kagglehub
 
 ---
 
-## 4) Confirm the dataset is present
+## 4) Download the dataset
 
-This project expects the dataset folder to already exist in the repo root, for example:
+This project expects the dataset folder to exist in the repo root, for example:
 
 ```text
 Nuts and Bolts.v1i.yolov8/
 └── data.yaml
 ```
 
-If it is missing, fetch it or restore it from your repo copy before training or running the app.
+If it is not already present, download it directly from the terminal:
 
-You can also use the helper script:
+```bash
+python -m pip install kagglehub
+python -c "import kagglehub; print(kagglehub.dataset_download('ishantvinaik/synthetic-nuts-and-bolts-data'))"
+```
+
+This will download the dataset into a local folder that you can then place or point to from the project root.
+
+A simple helper script is also included:
 
 ```bash
 python download_data.py
 ```
 
-That script downloads the dataset source using Kaggle Hub.
+That script calls the same Kaggle download flow.
 
 ---
 
@@ -254,8 +261,9 @@ cd robot_arm_sorter
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
-pip install ultralytics flask opencv-python numpy
-python download_data.py    # optional if dataset is not already present
+pip install ultralytics flask opencv-python numpy kagglehub
+python -c "import kagglehub; print(kagglehub.dataset_download('ishantvinaik/synthetic-nuts-and-bolts-data'))"
+python download_data.py    # optional helper version of the same download
 python show_classes.py     # optional for class mapping
 python train_yolo.py       # optional if best.pt is missing
 cp runs/detect/train/weights/best.pt best.pt
