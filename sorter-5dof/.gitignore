@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# generated
+host/runs/
+host/tests/out/
+datasets/
+*.pt
+*.onnx
+
+# per-rig calibration (commit it if everyone uses the same rig)
+host/calibration/

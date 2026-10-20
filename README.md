@@ -1,5 +1,10 @@
 # Robot Arm Sorter
 
+> **5-DOF gripper version:** [`sorter-5dof/`](sorter-5dof/) has the full pick-and-place stack for a
+> 5-DOF arm on a PCA9685: YOLO + HSV fallback, homography calibration, 5-DOF IK, a serial
+> protocol and Arduino/ESP32 firmware. Start with [`sorter-5dof/README.md`](sorter-5dof/README.md).
+> The rest of this README covers the original 3-DOF vision dashboard.
+
 This project is a machine-vision pipeline for a 3-DOF robotic arm sorter. It reads a camera feed, detects nuts, bolts, and washers with YOLO, refines detections with OpenCV, converts pixel locations to millimetres, and computes inverse kinematics for the robot arm.
 
 The repo is intended to be run end-to-end from a fresh clone.
