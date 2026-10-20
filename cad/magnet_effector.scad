@@ -16,7 +16,7 @@
 // (config.PRESS_DEPTH) and the spring absorbs it.
 //
 // Render one part:  openscad -D 'part="carrier"' -o carrier.stl magnet_effector.scad
-// or run cad/render_all.cmd. Print in PETG (the coil runs warm; PLA softens ~55 C).
+// or run cad/render_all.sh. Print in PETG (matches the arm; the coil runs warm and PLA softens ~55 C).
 // Every dimension below is a parameter; MEASURE the ones marked [measure].
 
 part = "assembly";   // assembly | adapter_horn | adapter_bolt | sleeve | carrier | rigid_cup | section

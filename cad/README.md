@@ -65,7 +65,18 @@ Change the numbers at the top of `magnet_effector.scad`, then re-export with
 
 ## Printing
 
-* **PETG**, not PLA. The coil runs warm, and PLA softens around 55 °C.
+**Use PETG** for all four parts. The RoboWings arm itself is listed as PETG, so the
+housing matches its stiffness and heat behaviour.
+
+| Filament | Softens at | For this housing | Why |
+|---|---|---|---|
+| **PETG** | ~80 °C | **Use this** | Takes coil heat, tough rather than brittle, low creep under the spring, slides well, easy to print. |
+| ABS | ~100 °C | Works, second choice | Most heat-resistant, but warps and cracks between layers without an enclosure, and gives off fumes. |
+| PLA | ~55–60 °C | Test fits only | Stiff and accurate, but the warm coil plus spring load slowly deforms it, and it is brittle under screws. |
+| TPU | flexible | Do not use for these parts | Too soft to hold position. A TPU pad on the magnet face would add an air gap and cut the holding force. |
+
+PLA is fine for a quick fit check of the adapter on your servo horn before the PETG print.
+
 * 0.2 mm layers, 4 walls, 40 % infill.
 * No supports. Print the carrier pocket-down, the sleeve flange-down and the adapters flat.
 * If the carrier binds in the sleeve, raise `fit_slide` from 0.5 to 0.6–0.7 and reprint
