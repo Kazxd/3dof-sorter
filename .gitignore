@@ -61,3 +61,8 @@ class_preview/
 datasets/
 dataset/
 data/
+# 5-DOF sorter
+host/runs/
+host/tests/out/
+host/calibration/
+host/models/
