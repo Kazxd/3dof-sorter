@@ -10,7 +10,7 @@ space = save this frame      a = auto-save every 1.5 s on/off      q = quit
 
 Vary between shots: number of parts (1-15), positions, rotations, parts touching,
 nuts upside down, bolts with heads both ways, room light on/off, and a few frames
-with the gripper or your hand in view (as negatives). Then label in Roboflow or
+with the magnet housing or your hand in view (as negatives). Then label in Roboflow or
 CVAT with exactly three classes: washer, nut, bolt, export "YOLOv8", unzip into
 ../datasets/own/ and run get_model.py.
 """

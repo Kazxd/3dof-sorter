@@ -1,29 +1,42 @@
 /*
-  arm_controller.ino - low-level servo executor for the 5-DOF sorter arm
-  ======================================================================
+  arm_controller.ino - low-level executor for the 5-DOF electromagnet sorter arm
+  ==============================================================================
   Board : Arduino Nano (ATmega328P) or ESP32 dev board
   Driver: PCA9685 16-channel PWM board (Adafruit or clone), I2C address 0x40
   Lib   : "Adafruit PWM Servo Driver Library" (Library Manager)
+  Tool  : KK-P20/15 12 V lifting electromagnet (~0.2 A), switched by a MOSFET
 
   Wiring
     PCA9685 VCC -> 5V of the board (logic only)    PCA9685 GND -> GND
     PCA9685 SDA -> Nano A4  / ESP32 GPIO21         PCA9685 SCL -> Nano A5 / ESP32 GPIO22
     PCA9685 V+ (green screw terminal) -> separate 5-6 V servo supply, >= 5 A
-    Servo supply GND must be joined to the board's GND.
-    Channels 0..5 = base, shoulder, elbow, wrist pitch, wrist roll, gripper.
+    Channels 0..4 = base, shoulder, elbow, wrist pitch, wrist roll.
+
+    Electromagnet (12 V supply, NOT the servo supply):
+      +12V -----------+---------------- magnet lead A
+                      |
+                 1N4007 / 1N5819 (stripe towards +12V)
+                      |
+      MOSFET drain ---+---------------- magnet lead B
+      MOSFET source -> GND (12 V GND, servo GND and board GND all joined)
+      MOSFET gate  <- 220 ohm <- MAGNET_PIN, plus 10 k from gate to GND
+      Logic-level MOSFET: IRLZ44N, AO3400 or a ready-made "MOSFET switch module".
+      Never drive the coil straight from a pin, never leave out the diode.
 
   The PC does all vision and inverse kinematics. This sketch only:
-    1. parses packets   <M,seq,a1,a2,a3,a4,a5,g,ms*CS>   (see arm_link.py on the PC)
+    1. parses packets   <M,seq,a1,a2,a3,a4,a5,mag,ms*CS>   (see host/arm_link.py)
     2. clamps every angle to the limits below
     3. moves all servos together along a minimum-jerk curve, so they start and
        stop gently and arrive at the same moment (no violent snapping)
-    4. reports <ACK,seq,ms> when accepted and <DONE,seq> when the move ends
+    4. switches the magnet at the START of a move (mag: 1 = on, 0 = off)
+    5. reports <ACK,seq,ms> when accepted and <DONE,seq> when the move ends
+    6. drops the magnet if the PC goes silent or it stays on too long
 
   Every angle is in SERVO degrees (0..SERVO_RANGE_DEG). The PC converts its
-  kinematic angles with the zero/direction table in config.py.
+  kinematic angles with the zero/direction table in host/config.py.
 
-  For manual testing in the Serial Monitor (115200 baud, "Newline"), set
-  REQUIRE_CHECKSUM to 0 and type e.g.  <M,1,90,90,90,90,90,60,1500>
+  For manual testing in the Serial Monitor (115200 baud, "Newline"), keep
+  REQUIRE_CHECKSUM at 0 and type e.g.  <M,1,90,90,90,90,90,0,1500>
 */
 
 #include <Wire.h>
@@ -33,30 +46,36 @@
 // USER CONFIG
 // ============================================================================
 #define BAUD                115200
-#define NUM_SERVOS          6       // base, shoulder, elbow, wrist pitch, wrist roll, gripper
-#define GRIPPER_INDEX       5
-#define GRIPPER_IS_MAGNET   0       // 1 = channel of index 5 drives a MOSFET for an electromagnet
+#define NUM_SERVOS          5       // base, shoulder, elbow, wrist pitch, wrist roll
+#define NUM_VALUES          6       // 5 angles + magnet state in every move packet
+#if defined(ESP32)
+  #define MAGNET_PIN        25
+#else
+  #define MAGNET_PIN        7       // Nano D7
+#endif
+#define MAGNET_ACTIVE_HIGH  1       // 0 if your switch module turns on with a LOW input
+#define MAGNET_MAX_ON_MS    30000UL // safety: coil off after this long on (it runs warm)
+#define HOST_TIMEOUT_MS     5000UL  // safety: coil off if the PC goes silent this long
 #define REQUIRE_CHECKSUM    0       // 1 = reject packets without *CS (the PC always sends one)
-#define HOST_TIMEOUT_MS     5000UL  // magnet mode: release if the PC goes silent this long
 #define UPDATE_INTERVAL_MS  10      // servo update period while moving
 #define MIN_MOVE_MS         150
 #define PCA9685_ADDR        0x40
 #define SERVO_FREQ_HZ       50
 #define PCA_OSC_HZ          27000000UL   // trim 25-27 MHz if pulses measure off on a scope
 
-const uint8_t  CHANNEL[NUM_SERVOS]         = {0, 1, 2, 3, 4, 5};
+const uint8_t  CHANNEL[NUM_SERVOS]         = {0, 1, 2, 3, 4};
 // Pulse widths at 0 deg and at SERVO_RANGE_DEG. MG996R / SG90 are usually ~500-2500 us.
 // Start narrower (600-2400) and widen only if the servo does not reach its end stops.
-const uint16_t PULSE_MIN_US[NUM_SERVOS]    = {500, 500, 500, 500, 500, 500};
-const uint16_t PULSE_MAX_US[NUM_SERVOS]    = {2500, 2500, 2500, 2500, 2500, 2500};
-const float    SERVO_RANGE_DEG[NUM_SERVOS] = {180, 180, 180, 180, 180, 180};
-// Hard limits in servo degrees: keep in sync with JOINTS min/max in config.py.
-const float    LIMIT_MIN[NUM_SERVOS]       = {0,   15,  0,   0,   0,   20};
-const float    LIMIT_MAX[NUM_SERVOS]       = {180, 165, 180, 180, 180, 120};
-// Pose written at power-up (keep in sync with HOME_SERVO in config.py).
-const float    HOME_POSE[NUM_SERVOS]       = {90,  90,  90,  90,  90,  60};
+const uint16_t PULSE_MIN_US[NUM_SERVOS]    = {500, 500, 500, 500, 500};
+const uint16_t PULSE_MAX_US[NUM_SERVOS]    = {2500, 2500, 2500, 2500, 2500};
+const float    SERVO_RANGE_DEG[NUM_SERVOS] = {180, 180, 180, 180, 180};
+// Hard limits in servo degrees: keep in sync with JOINTS min/max in host/config.py.
+const float    LIMIT_MIN[NUM_SERVOS]       = {0,   15,  0,   0,   0};
+const float    LIMIT_MAX[NUM_SERVOS]       = {180, 165, 180, 180, 180};
+// Pose written at power-up (keep in sync with HOME_SERVO in host/config.py).
+const float    HOME_POSE[NUM_SERVOS]       = {90,  90,  90,  90,  90};
 // Speed caps in deg/s. Big joints carry the most load: keep them slow.
-const float    MAX_SPEED_DPS[NUM_SERVOS]   = {90,  60,  75,  120, 180, 240};
+const float    MAX_SPEED_DPS[NUM_SERVOS]   = {90,  60,  75,  120, 180};
 
 // ============================================================================
 // STATE
@@ -68,6 +87,8 @@ float targetPos[NUM_SERVOS];
 float curPos[NUM_SERVOS];
 float written[NUM_SERVOS];           // last value sent to the PCA9685 (-1 = output off)
 
+bool          magnetOn     = false;
+unsigned long magnetOnMs   = 0;
 bool          moving       = false;
 unsigned long moveStartMs  = 0;
 unsigned long moveDurMs    = 0;
@@ -86,14 +107,13 @@ bool    inFrame = false;
 // ============================================================================
 // OUTPUT
 // ============================================================================
+void setMagnet(bool on) {
+  digitalWrite(MAGNET_PIN, (on == (bool)MAGNET_ACTIVE_HIGH) ? HIGH : LOW);
+  if (on && !magnetOn) magnetOnMs = millis();
+  magnetOn = on;
+}
+
 void writeServo(uint8_t i, float deg) {
-  if (GRIPPER_IS_MAGNET && i == GRIPPER_INDEX) {
-    bool on = deg > 0.5f;
-    if (on) pwm.setPWM(CHANNEL[i], 4096, 0);      // fully on
-    else    pwm.setPWM(CHANNEL[i], 0, 4096);      // fully off
-    written[i] = on ? 1 : 0;
-    return;
-  }
   float frac = deg / SERVO_RANGE_DEG[i];
   if (frac < 0) frac = 0;
   if (frac > 1) frac = 1;
@@ -106,7 +126,7 @@ void writeServo(uint8_t i, float deg) {
 
 void outputsOff() {
   for (uint8_t i = 0; i < NUM_SERVOS; i++) {
-    pwm.setPWM(CHANNEL[i], 0, 4096);
+    pwm.setPWM(CHANNEL[i], 0, 4096);              // channel fully off
     written[i] = -1;
   }
 }
@@ -142,7 +162,6 @@ float clampDeg(uint8_t i, float d, bool &clamped) {
 unsigned long planDuration(const float* target, unsigned long requestedMs) {
   unsigned long dur = requestedMs < MIN_MOVE_MS ? MIN_MOVE_MS : requestedMs;
   for (uint8_t i = 0; i < NUM_SERVOS; i++) {
-    if (GRIPPER_IS_MAGNET && i == GRIPPER_INDEX) continue;
     float dist = fabs(target[i] - curPos[i]);
     unsigned long need = (unsigned long)(1875.0f * dist / MAX_SPEED_DPS[i]);   // ms
     if (need > dur) dur = need;
@@ -161,7 +180,7 @@ void finishActive(bool preempted) {
   lastDone = true;
 }
 
-void startMove(const float* target, unsigned long requestedMs, long seq) {
+void startMove(const float* target, bool magnet, unsigned long requestedMs, long seq) {
   if (moving) finishActive(true);                     // a new move replaces the old one
   if (relaxed) {                                      // outputs were off: we no longer know the
     relaxed = false;                                  // real position, so restart from target
@@ -171,10 +190,7 @@ void startMove(const float* target, unsigned long requestedMs, long seq) {
     startPos[i] = curPos[i];
     targetPos[i] = target[i];
   }
-  if (GRIPPER_IS_MAGNET) {                            // magnet switches at the start of the move
-    curPos[GRIPPER_INDEX] = startPos[GRIPPER_INDEX] = target[GRIPPER_INDEX];
-    writeServo(GRIPPER_INDEX, target[GRIPPER_INDEX]);
-  }
+  setMagnet(magnet);                                  // magnet switches as the move starts
   moveDurMs = planDuration(target, requestedMs);
   moveStartMs = millis();
   lastUpdateMs = 0;
@@ -196,7 +212,6 @@ void updateMotion() {
   float e = s * s * s * (10.0f + s * (-15.0f + 6.0f * s));     // minimum-jerk 0 -> 1
 
   for (uint8_t i = 0; i < NUM_SERVOS; i++) {
-    if (GRIPPER_IS_MAGNET && i == GRIPPER_INDEX) continue;
     curPos[i] = startPos[i] + (targetPos[i] - startPos[i]) * e;
     if (fabs(curPos[i] - written[i]) >= 0.05f || s >= 1.0f) writeServo(i, curPos[i]);
   }
@@ -273,8 +288,8 @@ void handleFrame(char* frame) {
       reply2("PONG", seq);
       break;
 
-    case 'M': {                                   // M,seq,a1..a6,ms
-      if (n != 2 + NUM_SERVOS + 1) { replyErr(seq, F("FORMAT")); return; }
+    case 'M': {                                   // M,seq,a1..a5,mag,ms
+      if (n != 2 + NUM_VALUES + 1) { replyErr(seq, F("FORMAT")); return; }
       float target[NUM_SERVOS];
       bool clamped = false;
       for (uint8_t i = 0; i < NUM_SERVOS; i++) {
@@ -282,21 +297,23 @@ void handleFrame(char* frame) {
         if (!parseNum(tok[2 + i], v)) { replyErr(seq, F("NUMBER")); return; }
         target[i] = clampDeg(i, v, clamped);
       }
+      float mag;
+      if (!parseNum(tok[2 + NUM_SERVOS], mag)) { replyErr(seq, F("NUMBER")); return; }
       long ms;
-      if (!parseLong(tok[2 + NUM_SERVOS], ms) || ms < 0 || ms > 60000L) { replyErr(seq, F("DURATION")); return; }
+      if (!parseLong(tok[2 + NUM_VALUES], ms) || ms < 0 || ms > 60000L) { replyErr(seq, F("DURATION")); return; }
       if (clamped) { Serial.print(F("<WARN,CLAMP,")); Serial.print(seq); Serial.println('>'); }
-      startMove(target, (unsigned long)ms, seq);
+      startMove(target, mag > 0.5f, (unsigned long)ms, seq);
       break;
     }
 
-    case 'H': {                                   // H,seq[,ms]
+    case 'H': {                                   // H,seq[,ms]  home, magnet off
       long ms = 1500;
       if (n >= 3 && !parseLong(tok[2], ms)) { replyErr(seq, F("DURATION")); return; }
-      startMove(HOME_POSE, (unsigned long)ms, seq);
+      startMove(HOME_POSE, false, (unsigned long)ms, seq);
       break;
     }
 
-    case 'S':                                     // stop and hold here
+    case 'S':                                     // stop and hold here (magnet unchanged)
       if (moving) {
         for (uint8_t i = 0; i < NUM_SERVOS; i++) targetPos[i] = curPos[i];
         moving = false;
@@ -305,16 +322,18 @@ void handleFrame(char* frame) {
       reply2("ACK", seq);
       break;
 
-    case 'R':                                     // relax: PWM off, arm goes limp
+    case 'R':                                     // relax: PWM off, magnet off, arm goes limp
       if (moving) { moving = false; finishActive(true); }
       outputsOff();
+      setMagnet(false);
       relaxed = true;
       reply2("ACK", seq);
       break;
 
-    case 'Q':                                     // POS,seq,a1..a6,moving
+    case 'Q':                                     // POS,seq,a1..a5,mag,moving
       Serial.print(F("<POS,")); Serial.print(seq);
       for (uint8_t i = 0; i < NUM_SERVOS; i++) { Serial.print(','); Serial.print(curPos[i], 1); }
+      Serial.print(','); Serial.print(magnetOn ? 1 : 0);
       Serial.print(','); Serial.print(moving ? 1 : 0); Serial.println('>');
       break;
 
@@ -343,17 +362,22 @@ void readSerial() {
 // ============================================================================
 // SAFETY
 // ============================================================================
-void checkHostTimeout() {
-  if (!GRIPPER_IS_MAGNET) return;          // a servo gripper simply keeps holding
-  if (written[GRIPPER_INDEX] > 0.5f && millis() - lastHostMs > HOST_TIMEOUT_MS) {
-    curPos[GRIPPER_INDEX] = targetPos[GRIPPER_INDEX] = 0;
-    writeServo(GRIPPER_INDEX, 0);
+void checkMagnetSafety() {
+  if (!magnetOn) return;
+  unsigned long now = millis();
+  if (now - lastHostMs > HOST_TIMEOUT_MS) {
+    setMagnet(false);
     Serial.println(F("<WARN,HOST_TIMEOUT,MAGNET_OFF>"));
+  } else if (now - magnetOnMs > MAGNET_MAX_ON_MS) {
+    setMagnet(false);
+    Serial.println(F("<WARN,MAGNET_MAX_ON,MAGNET_OFF>"));
   }
 }
 
 // ============================================================================
 void setup() {
+  pinMode(MAGNET_PIN, OUTPUT);
+  setMagnet(false);                        // coil off before anything else happens
   Serial.begin(BAUD);
   Wire.begin();                            // Nano: A4/A5, ESP32: GPIO21/22
   Wire.setClock(400000);
@@ -369,11 +393,11 @@ void setup() {
     writeServo(i, HOME_POSE[i]);
   }
   lastHostMs = millis();
-  Serial.println(F("<READY,ARM5,1>"));
+  Serial.println(F("<READY,ARM5MAG,2>"));
 }
 
 void loop() {
   readSerial();
   updateMotion();
-  checkHostTimeout();
+  checkMagnetSafety();
 }

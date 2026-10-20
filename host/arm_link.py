@@ -6,7 +6,7 @@ Packet format (ASCII, one per line):
     <PAYLOAD*CS>\n      CS = XOR of every byte of PAYLOAD, two hex digits
 
 Host -> board
-    M,seq,a1,a2,a3,a4,a5,g,ms   move: 5 joint servo angles + gripper, in `ms` milliseconds
+    M,seq,a1,a2,a3,a4,a5,m,ms   move: 5 joint servo angles + magnet (1 on / 0 off), in `ms` milliseconds
     H,seq,ms                    go to the firmware's HOME_POSE
     S,seq                       stop where you are
     R,seq                       relax: switch every PWM output off (arm goes limp!)
@@ -25,7 +25,7 @@ Board -> host
 Every command is retried until ACKed. The board treats a repeated seq as the same
 command (re-ACKs it, does not run it twice), so a lost ACK cannot cause a double move.
 
-Why not the bare <a1,a2,a3,a4,gripper>: with no sequence number or checksum the
+Why not a bare <a1,a2,a3,a4,a5,magnet>: with no sequence number or checksum the
 host cannot tell a garbled line from a good one, or know when a move finished.
 """
 import logging
@@ -250,7 +250,7 @@ class ArmLink:
         self._command(["P"], reply=("PONG",))
 
     def move(self, pose6, ms, on_wait=None):
-        """Move to a 6-value servo pose (5 joints + gripper) and block until DONE."""
+        """Move to a 6-value pose (5 servo angles + magnet 0/1) and block until DONE."""
         if len(pose6) != 6:
             raise ValueError("pose must have 6 values")
         fields = ["M"] + [fmt(a) for a in pose6] + [str(int(ms))]

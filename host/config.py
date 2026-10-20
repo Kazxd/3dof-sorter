@@ -102,9 +102,9 @@ RADIAL_SPREAD_NUT = 0.09      # (95th / 5th percentile of centroid->edge distanc
                               # measured in mm on the table: washer ~0.02-0.06, nut ~0.12-0.15
 HSV_MIN_SCORE = 0.5           # fallback detections get conf = this (they have no real score)
 
-# Bolt grasp point: shift from the silhouette centroid towards the head by this
-# fraction of the bolt length (head is heavier than the shank). 0 = centroid.
-BOLT_GRASP_SHIFT = 0.10
+# Bolt pick point: shift from the silhouette centroid towards the head by this
+# fraction of the bolt length, so the magnet lifts near the centre of mass. 0 = centroid.
+BOLT_PICK_SHIFT = 0.10
 
 # --- Scan / consensus ----------------------------------------------------------
 SCAN_FRAMES = 5               # frames averaged per scan (arm parked, scene still)
@@ -123,15 +123,18 @@ IDLE_WAIT_S = 1.5             # pause between scans when nothing is pickable
 L1 = 95.0      # table surface -> shoulder pitch axis (vertical)
 L2 = 105.0     # shoulder axis -> elbow axis
 L3 = 100.0     # elbow axis -> wrist pitch axis
-L4 = 130.0     # wrist pitch axis -> tool point (middle of the closed fingertips)
+L4 = 130.0     # wrist pitch axis -> magnet face, spring at rest =
+               # (wrist pitch axis -> top of the printed adapter) + 52 mm (cad/README.md)
 SHOULDER_OFFSET = 0.0   # horizontal distance from base yaw axis to shoulder axis (0 on most kits)
 
-# Tool pitch the IK tries, in order. -90 = gripper straight down (best for flat parts).
+# Tool pitch the IK tries, in order. -90 = magnet face straight down (flat contact = full force).
 # Flatter angles (-60, -45) extend reach far away; steeper ones (-110, -120) help close in.
 PITCH_CANDIDATES = [-90, -85, -95, -80, -100, -75, -105, -70, -110, -65, -120, -60, -55, -50, -45]
 
-# Safety floor: no IK solution may put these points lower than this (mm above table)
-MIN_TCP_Z = -1.0
+# Safety floor: no IK solution may put these points lower than this (mm above table).
+# The tool point may go a little below the table: the spring in the magnet housing
+# (8 mm travel) absorbs it and keeps the magnet face pressed flat.
+MIN_TCP_Z = -4.0
 MIN_WRIST_Z = 15.0
 MIN_ELBOW_Z = 25.0
 
@@ -141,7 +144,8 @@ MIN_ELBOW_Z = 25.0
 # servo_deg = zero + direction * kinematic_deg
 #   zero      : servo angle at which the joint sits at its kinematic 0
 #               (base: pointing along +X; shoulder: link horizontal-forward;
-#                elbow / wrist pitch: straight in line; roll: jaws close sideways)
+#                elbow / wrist pitch: straight in line; roll: any fixed angle, the
+#                magnet is round so roll never changes - it stays at kinematic 0)
 #   direction : +1 or -1, so that a positive kinematic angle moves the right way
 #   min / max : servo-degree limits where nothing hits anything
 # Defaults assume the common kit convention "all servos at 90 = arm stands straight up".
@@ -153,27 +157,30 @@ JOINTS = {
     "wrist_roll":  dict(zero=90.0, direction=+1, min=0.0,  max=180.0),
 }
 
-# Full 6-value poses in SERVO degrees: base, shoulder, elbow, wrist pitch, wrist roll, gripper.
-HOME_SERVO = [90, 90, 90, 90, 90, 60]       # must match HOME_POSE in the firmware
-PARK_SERVO = [170, 110, 40, 60, 90, 60]     # arm folded OUT of the camera's view
+# Full 6-value poses: 5 servo angles (base, shoulder, elbow, wrist pitch, wrist roll)
+# followed by the magnet state (1 = on, 0 = off).
+HOME_SERVO = [90, 90, 90, 90, 90, 0]        # must match HOME_POSE in the firmware
+PARK_SERVO = [170, 110, 40, 60, 90, 0]      # arm folded OUT of the camera's view
 
 # =============================================================================
-# 6. END EFFECTOR, GRASPS AND BINS
+# 6. ELECTROMAGNET, PICK HEIGHTS AND BINS
 # =============================================================================
-# "gripper": 6th value is the gripper servo angle.
-# "magnet" : 6th value is 0 (off) / 1 (on); flash the firmware with GRIPPER_IS_MAGNET 1.
-END_EFFECTOR = "gripper"
-
-# Per class: z = tool-point height for the grasp (mm above table, roughly half the
-# part height), open / close = gripper servo angles, roll = "perpendicular" (jaws
-# close across the part's long axis) or "any" (keep the wrist at roll 0).
-GRASP = {
-    "washer": dict(z=0.5, open=95, close=35, roll="any"),
-    "nut":    dict(z=2.5, open=95, close=40, roll="any"),
-    "bolt":   dict(z=3.0, open=95, close=40, roll="perpendicular"),
+# End effector: KK-P20/15 lifting electromagnet, 12 V DC, about 0.2 A, 20 mm x 15 mm,
+# up to 3 kg on flat clean mild steel. It sits in the spring-loaded printed housing
+# in cad/ and is switched by the Arduino through a logic-level MOSFET (README wiring).
+# Only ferromagnetic parts lift: plain or zinc-plated steel. Stainless A2/A4 and brass will not.
+#
+# Per class: z = height of the part's top face above the table, which is where the
+# magnet face has to touch. Measure your parts with calipers.
+PICK = {
+    "washer": dict(z=1.6),     # M6 washer thickness
+    "nut":    dict(z=5.0),     # M6 nut height
+    "bolt":   dict(z=6.0),     # M6 bolt lying flat: shank diameter
 }
-if END_EFFECTOR == "magnet":
-    GRASP = {k: dict(v, open=0, close=1, roll="any") for k, v in GRASP.items()}
+PRESS_DEPTH = 3.0          # go this far below the part's top; the housing spring takes it up
+                           # so the face always seats flat, even with a few mm of arm error
+MAGNET_SETTLE_MS = 250     # magnet on, wait before lifting (coil current takes time to build)
+RELEASE_DWELL_MS = 400     # magnet off over the bin, wait before moving (residual magnetism)
 
 # Bin drop points in the robot frame: (X, Y, Z of the tool point when releasing).
 # Put the bins outside WORKSPACE_* so they are never detected as parts.
@@ -186,11 +193,10 @@ BINS = {
 # =============================================================================
 # 7. MOTION
 # =============================================================================
-APPROACH_HEIGHT = 40.0   # hover this far above the grasp / drop point before going straight down
-LIFT_HEIGHT = 60.0       # lift this far after gripping
+APPROACH_HEIGHT = 40.0   # hover this far above the pick / drop point before going straight down
+LIFT_HEIGHT = 60.0       # lift this far after the magnet grabs
 MOVE_MS = 1200           # free-space moves (firmware may stretch it to respect its speed limits)
 DESCEND_MS = 700         # straight down / up near the part
-GRIP_MS = 400            # gripper open / close
 PARK_MS = 1200
 
 # =============================================================================

@@ -11,7 +11,7 @@ One cycle (the camera only looks while the arm is parked out of view):
     PARK -> SCAN (N fresh frames, keep parts seen in most of them)
          -> SELECT (inside pick area, has a bin, not failed before; isolated + nearest first)
          -> PLAN (IK for every waypoint; unreachable parts are skipped, never attempted)
-         -> PICK (hover, descend, grip, lift) -> PLACE (bin, lower, release, retreat)
+         -> PICK (hover, press down, magnet on, lift) -> PLACE (bin, lower, magnet off, retreat)
          -> PARK -> VERIFY (the next scan: is the part still there?) -> repeat
 
 Keys in the window: q / Esc quit (after parking), space pause, r forget skipped spots.
@@ -166,8 +166,7 @@ class Sorter:
 
     def _pose(self, servo_pose):
         pose = list(servo_pose)
-        if C.END_EFFECTOR == "magnet":
-            pose[5] = 0                 # never leave the magnet on in park / home
+        pose[5] = 0                     # never leave the magnet on in park / home
         return pose
 
     # ------------------------------------------------------------------ UI
@@ -300,39 +299,36 @@ class Sorter:
         return (label, int(round(x / 10.0)), int(round(y / 10.0)))
 
     def plan(self, t):
-        """Every waypoint of one pick-and-place as (name, 6-value servo pose, ms). Raises Unreachable."""
-        g = C.GRASP[t.label]
-        closing = None
-        if g["roll"] == "perpendicular" and t.axis is not None:
-            closing = (t.axis + 90.0) % 180.0          # jaws close across the long axis
+        """Every waypoint of one pick-and-place as (name, 6-value pose, ms). Raises Unreachable.
+        The 6th value is the magnet: 1 = on, 0 = off. The magnet is round, so the wrist
+        roll stays fixed and the part's orientation does not matter."""
+        top = C.PICK[t.label]["z"]                     # height of the part's top face
 
-        def at(x, y, z, closing_axis, prefer_pitch):
-            try:                                       # same pitch as the grasp = straight descent
-                return K.solve(x, y, z, closing_axis, pitches=[prefer_pitch])
+        def at(x, y, z, prefer_pitch):
+            try:                                       # same pitch as the pick = straight descent
+                return K.solve(x, y, z, pitches=[prefer_pitch])
             except K.Unreachable:
-                return K.solve(x, y, z, closing_axis)
+                return K.solve(x, y, z)
 
-        grasp = K.solve(t.x, t.y, g["z"], closing)
-        hover = at(t.x, t.y, g["z"] + C.APPROACH_HEIGHT, closing, grasp.pitch)
-        lift = at(t.x, t.y, g["z"] + C.LIFT_HEIGHT, closing, grasp.pitch)
+        touch = K.solve(t.x, t.y, top - C.PRESS_DEPTH)  # slightly below: the housing spring compresses
+        hover = at(t.x, t.y, top + C.APPROACH_HEIGHT, touch.pitch)
+        lift = at(t.x, t.y, top + C.LIFT_HEIGHT, touch.pitch)
         bx, by, bz = C.BINS[t.label]
         drop = K.solve(bx, by, bz)
-        above = at(bx, by, bz + C.APPROACH_HEIGHT, None, drop.pitch)
+        above = at(bx, by, bz + C.APPROACH_HEIGHT, drop.pitch)
 
-        op, cl = g["open"], g["close"]
-
-        def pose(sol, grip):
-            return list(sol.servo) + [grip]
+        def pose(sol, magnet):
+            return list(sol.servo) + [magnet]
 
         return [
-            ("approach", pose(hover, op), C.MOVE_MS),
-            ("descend", pose(grasp, op), C.DESCEND_MS),
-            ("grip", pose(grasp, cl), C.GRIP_MS),
-            ("lift", pose(lift, cl), C.DESCEND_MS),
-            ("to bin", pose(above, cl), C.MOVE_MS),
-            ("lower", pose(drop, cl), C.DESCEND_MS),
-            ("release", pose(drop, op), C.GRIP_MS),
-            ("retreat", pose(above, op), C.DESCEND_MS),
+            ("approach", pose(hover, 0), C.MOVE_MS),
+            ("descend", pose(touch, 0), C.DESCEND_MS),
+            ("magnet on", pose(touch, 1), C.MAGNET_SETTLE_MS),
+            ("lift", pose(lift, 1), C.DESCEND_MS),
+            ("to bin", pose(above, 1), C.MOVE_MS),
+            ("lower", pose(drop, 1), C.DESCEND_MS),
+            ("magnet off", pose(drop, 0), C.RELEASE_DWELL_MS),
+            ("retreat", pose(above, 0), C.DESCEND_MS),
         ]
 
     def select(self, targets):
@@ -342,7 +338,7 @@ class Sorter:
             if not in_workspace(t.x, t.y):
                 t.note = "outside pick area"
                 continue
-            if t.label not in C.BINS or t.label not in C.GRASP:
+            if t.label not in C.BINS or t.label not in C.PICK:
                 t.note = "no bin for this class"
                 continue
             reason = self.skip_cells.get(self._cell(t.label, t.x, t.y))

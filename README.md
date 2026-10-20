@@ -1,42 +1,46 @@
-# Vision-guided 5-DOF fastener sorter
+# Vision-guided 5-DOF electromagnetic fastener sorter
 
 A phone camera looks down at a mat. The PC finds washers, nuts and bolts, works out
 where each one is in millimetres, solves the arm's joint angles, and sends them over
-USB to an Arduino Nano or ESP32. The board drives six servos through a PCA9685 and
-moves them smoothly. Each part is dropped into its own bin.
+USB to an Arduino Nano or ESP32. The board moves five servos smoothly through a PCA9685
+and switches a 12 V electromagnet through a MOSFET. Each part is lifted by the magnet
+and dropped into its own bin.
 
 ```
  phone (IP Webcam) ──Wi-Fi──▶ PC: camera.py ─▶ vision.py ─▶ mapping.py ─▶ kinematics.py ─▶ arm_link.py
                                    newest       YOLO + HSV     pixels → mm      5-DOF IK         USB serial
                                    frame        fallback       (homography)     + limits         <M,seq,…*CS>
                                                                                                    │
-                         servos ◀── PCA9685 ◀── I²C ◀── Nano / ESP32: firmware/arm_controller.ino ◀┘
-                                                         parse · clamp · min-jerk smoothing · ACK/DONE
+        5 servos ◀── PCA9685 ◀── I²C ◀── Nano / ESP32: firmware/arm_controller.ino ◀──────────────┘
+        magnet   ◀── MOSFET  ◀── D7  ◀── parse · clamp · min-jerk smoothing · magnet safety · ACK/DONE
 ```
 
-`sorter.py` runs the cycle: **park → scan → select → plan → pick → place → park → verify**.
-The camera only looks while the arm is parked out of view, so the arm never hides or
-gets mistaken for a part.
+`host/sorter.py` runs the cycle: **park → scan → select → plan → press + magnet on → lift →
+bin → magnet off → park → verify**. The camera only looks while the arm is parked out of
+view, so the arm never hides parts or gets mistaken for one.
+
+The earlier 3-DOF vision dashboard lives on the
+[`3dof-dashboard`](https://github.com/Kazxd/3dof-sorter/tree/3dof-dashboard) branch.
 
 ## Folder layout
 
 | Path | What it does |
 |---|---|
-| `host/config.py` | **Every number you measure or tune.** Link lengths, servo zeros, bins, HSV, thresholds. |
+| `host/config.py` | **Every number you measure or tune.** Link lengths, servo zeros, pick heights, bins, HSV, thresholds. |
 | `host/sorter.py` | Main program and state machine. |
 | `host/camera.py` | Background frame grabber: always the newest frame, auto-reconnect. |
-| `host/vision.py` | YOLO detector, HSV + contour fallback, fusion, pick point and long-axis angle. |
+| `host/vision.py` | YOLO detector, HSV + contour fallback, fusion, pick point. |
 | `host/mapping.py` | Pixel ↔ mm homography, optional ArUco live recalibration. |
 | `host/kinematics.py` | Closed-form 5-DOF IK and FK, joint limits, table-collision floor. |
 | `host/arm_link.py` | Serial protocol (seq numbers, checksum, retries, ACK/DONE) and a simulator. |
 | `host/get_model.py` | Downloads public Roboflow datasets, merges them into washer/nut/bolt, trains YOLOv8. |
 | `host/collect_images.py` | Captures training photos from your own rig. |
-| `host/calibrate_camera.py` | Click or ArUco calibration of the camera → `calibration/homography.json`. |
-| `host/hsv_tuner.py` | Sliders for the HSV fallback, shows how each blob is classified. |
-| `host/arm_console.py` | Jog servos, read kinematic angles, test IK with `go x y z`. |
+| `host/calibrate_camera.py` | Click or ArUco calibration → `calibration/homography.json`. |
+| `host/hsv_tuner.py` | Sliders for the HSV fallback; shows how each blob is classified. |
+| `host/arm_console.py` | Jog servos, switch the magnet, test IK with `go x y z`. |
 | `host/tests/` | Hardware-free tests and a synthetic scene generator. |
-| `firmware/arm_controller/arm_controller.ino` | Board firmware. |
-| `legacy-3dof/` | The earlier 3-DOF vision dashboard and its Roboflow dataset, kept for reference. |
+| `firmware/arm_controller/` | Board firmware. |
+| `cad/` | Printable electromagnet housing: STLs, parametric OpenSCAD source, assembly guide. |
 
 ## Hardware and wiring
 
@@ -44,15 +48,19 @@ gets mistaken for a part.
 |---|---|
 | PCA9685 VCC / GND | Board 5V / GND (logic power only) |
 | PCA9685 SDA / SCL | Nano A4 / A5, or ESP32 GPIO21 / GPIO22 |
-| PCA9685 V+ (screw terminal) | **Separate 5–6 V servo supply, at least 5 A**. Join its GND to the board GND. |
-| PCA9685 ch 0–5 | base, shoulder, elbow, wrist pitch, wrist roll, gripper |
+| PCA9685 V+ (screw terminal) | **Separate 5–6 V servo supply, at least 5 A** |
+| PCA9685 ch 0–4 | base, shoulder, elbow, wrist pitch, wrist roll |
+| MOSFET gate (via 220 Ω, 10 kΩ to GND) | Nano D7, or ESP32 GPIO25 |
+| MOSFET drain / +12 V | Magnet leads, with a 1N4007 / 1N5819 diode across them (stripe to +12 V) |
 
-Add a 1000 µF capacitor across V+ and GND on the PCA9685. Never power the servos from
-the Nano's 5 V pin: the board browns out and resets mid-move.
+Join every ground: servo supply, 12 V supply and the board. Add a 1000 µF capacitor
+across V+ and GND on the PCA9685. Never power the servos from the Nano's 5 V pin.
+The full magnet wiring diagram is in [cad/README.md](cad/README.md#wiring).
 
-Optional electromagnet instead of the gripper: logic-level MOSFET (IRLZ44N / AO3400)
-gate on PCA9685 channel 5, 1N5819 flyback diode across the coil, coil on its own supply.
-Set `GRIPPER_IS_MAGNET 1` in the firmware and `END_EFFECTOR = "magnet"` in `config.py`.
+**End effector.** The gripper and its servo come off. A KK-P20/15 magnet (12 V,
+about 0.2 A, Ø20 × 15 mm) goes on, in the printed spring-loaded housing from `cad/`. The
+wrist roll servo stays as the mounting point. It is held at a fixed angle, because a
+round magnet has no orientation.
 
 ## Install
 
@@ -68,13 +76,10 @@ Python 3.10+. All tests should print `PASS`. They need no camera, arm or YOLO.
 
 Flash the firmware: Arduino IDE → Library Manager → install **Adafruit PWM Servo Driver
 Library** → open `firmware/arm_controller/arm_controller.ino` → select Nano (or ESP32 Dev
-Module) → Upload. Open the Serial Monitor at 115200 and you should see `<READY,ARM5,1>`.
-Close the Serial Monitor before running the Python tools; only one program can hold the port.
+Module) → Upload. The Serial Monitor at 115200 shows `<READY,ARM5MAG,2>`. Close the
+Serial Monitor before running the Python tools; only one program can hold the port.
 
 ## Getting a model
-
-No downloadable YOLOv8 `.pt` for washer/nut/bolt is good enough to trust on your
-table without retraining, so `get_model.py` builds one:
 
 ```bash
 set ROBOFLOW_API_KEY=your_key
@@ -83,82 +88,67 @@ python get_model.py merge
 python get_model.py train --device 0
 ```
 
-`set` is for Windows `cmd`. In PowerShell use `$env:ROBOFLOW_API_KEY="your_key"`. The
-free key is under roboflow.com → Settings → API Keys.
+`set` is for Windows `cmd`. In PowerShell use `$env:ROBOFLOW_API_KEY="your_key"`.
 
 * **download** pulls [yellow_silver](https://universe.roboflow.com/jingjing-huang/yellow_silver)
-  (about 1.4k top-down images with ArUco markers; silver and yellow bolts, nuts and washers)
-  and [nutsnbolts](https://universe.roboflow.com/tktk-hodc3/nutsnbolts) (50 images: nut, bolt,
-  washer). Check each page's Dataset tab for the newest version number and edit `SOURCES` if needed.
-* **merge** renames every class containing washer, nut, bolt or screw to our three labels and
-  drops anything else.
-* **train** fine-tunes `yolov8n.pt` and copies the result to `host/models/best.pt`. On a
-  laptop CPU this is slow. Google Colab's free GPU takes about 15–30 minutes.
+  (about 1.4k top-down images with ArUco markers) and
+  [nutsnbolts](https://universe.roboflow.com/tktk-hodc3/nutsnbolts) (50 images). Check each
+  page's Dataset tab for the newest version number and edit `SOURCES` if needed.
+* **merge** renames every class containing washer, nut, bolt or screw to our three labels.
+* **train** fine-tunes `yolov8n.pt` and copies the result to `host/models/best.pt`.
 
-**Then add your own photos.** This matters more than anything else on the list.
-Run `python collect_images.py` and take 250–400 frames on the real mat. Label them in
-Roboflow or CVAT with exactly `washer`, `nut`, `bolt`, export as YOLOv8, unzip into
-`datasets/own/`, then run `merge` and `train` again. Your images are repeated 3× in
-training so the model learns your setup first.
+**Then add your own photos.** This matters more than anything else on the list. Run
+`python collect_images.py` and take 250–400 frames on the real mat. Label them `washer`,
+`nut`, `bolt`, export as YOLOv8, unzip into `datasets/own/`, then run `merge` and `train` again.
 
-Without `best.pt` the sorter still runs on the HSV fallback alone (the status bar shows
-`hsv-only`).
+Without `best.pt` the sorter still runs on the HSV fallback alone.
 
 ## Calibration checklist
 
-Do these in order. Each step says which part of `config.py` it fills in.
+1. **Print and fit the magnet housing.** Follow [cad/README.md](cad/README.md). Test every
+   part you want to sort with a fridge magnet: stainless will not lift.
 
-1. **Servo pulses and home** (firmware). Power the servos with the horns *off*. The
-   board sends every servo to `HOME_POSE` (90°). Fit the horns so the arm stands straight
-   up ("candle pose"), with the gripper half open. If a servo buzzes at its end stop, narrow
-   `PULSE_MIN_US` / `PULSE_MAX_US` for that channel.
+2. **Servo pulses and home** (firmware). Power the servos with the horns *off*. The board
+   sends every servo to `HOME_POSE` (90°). Fit the horns so the arm stands straight up.
+   If a servo buzzes at its end stop, narrow `PULSE_MIN_US` / `PULSE_MAX_US`.
 
-2. **Joint zeros and directions** → `JOINTS`. Run `python arm_console.py`, then move one
-   joint at a time with `j <i> <deg>` until it sits at its kinematic zero:
-   * base: arm pointing straight forward (+X, away from the camera's near edge)
-   * shoulder: upper arm horizontal, pointing forward
+3. **Joint zeros and directions** → `JOINTS`. In `python arm_console.py`, move one joint at
+   a time with `j <i> <deg>` until it sits at its kinematic zero. The zero positions are:
+   * base: arm pointing straight forward (+X)
+   * shoulder: upper arm horizontal
    * elbow and wrist pitch: in line with the previous link
-   * wrist roll: jaws close sideways, across the arm
-   
-   That servo angle is `zero`. Now raise the servo angle a few degrees. The positive
-   directions are: base turns left (counter-clockwise from above), shoulder lifts,
-   elbow and wrist bend upward, roll turns counter-clockwise seen from above. If the joint
-   moved that way, `direction = +1`; if not, `-1`. Then set `min` / `max` where nothing
-   collides. Copy the same min/max into `LIMIT_MIN` / `LIMIT_MAX` in the firmware.
 
-3. **Link lengths** → `L1`–`L4`, `SHOULDER_OFFSET`. Measure axis centre to axis centre
-   with calipers. L1 runs from the table to the shoulder axis. L4 runs from the wrist pitch
-   axis to the middle of the closed fingertips.
+   That servo angle is `zero`. Now raise the servo angle a little. The positive directions
+   are: base turns left (counter-clockwise from above), shoulder lifts, elbow and wrist
+   bend upward. If the joint moved that way, `direction = +1`; if not, `-1`. Set `min` /
+   `max` where nothing collides, and copy them into `LIMIT_MIN` / `LIMIT_MAX` in the firmware.
 
-4. **Check the IK**. In `arm_console.py`, run `go 160 0 30`, then `go 200 60 30` and
-   `go 140 -80 30`. Measure where the fingertips actually are with a ruler. Errors above
-   5 mm mean step 2 or 3 is off. Use `fk` to see what the software thinks.
+4. **Link lengths** → `L1`–`L4`. Measure axis centre to axis centre. L1 is table to shoulder
+   axis. L4 is the wrist pitch axis to the top of the printed adapter, plus 52 mm.
 
-5. **Camera mount**. Put the phone on the tripod at its final height, lens parallel to the
-   table. In IP Webcam, lock focus, exposure and white balance. Choose a 4:3 resolution
-   such as 640×480 or 1280×960 and keep it from now on.
+5. **Check the IK and the magnet.** In `arm_console.py`, run `go 160 0 30`, then
+   `go 200 60 30`, then `go 140 -80 30`, and measure where the magnet face really is.
+   Errors above 5 mm mean step 3 or 4 is off. Then put a nut under the magnet, use
+   `go x y 2`, then `mag 1`, lift with `go x y 60`, and finally `mag 0`.
 
-6. **Homography** → `CALIB_POINTS_MM`, then `python calibrate_camera.py`. Mark 4–9
-   points on the mat, measure their X/Y from the base axis, enter them in `config.py`,
-   then click them in order. The green grid should land on your ruler marks. Run
-   `calibrate_camera.py --verify` and hover over marks to read their mm. For bump-proof
-   calibration, print ArUco 4×4 markers (ids 0–3), set `ARUCO_MARKERS_MM` and `USE_ARUCO = True`.
+6. **Camera mount.** Put the phone on the tripod, lens parallel to the table. Lock focus,
+   exposure and white balance in IP Webcam, and keep a 4:3 resolution.
 
-7. **Pick area** → `WORKSPACE_X/Y`. Keep it inside what the arm reaches with the gripper
-   pointing down. `python sorter.py --no-arm` marks unreachable parts in red.
+7. **Homography** → `CALIB_POINTS_MM`, then `python calibrate_camera.py`. Mark 4–9 points
+   on the mat, measure them from the base axis, click them in order, and check the grid with
+   `--verify`. For bump-proof calibration use ArUco markers (`USE_ARUCO = True`).
 
-8. **HSV fallback** → `HSV_*`. A green cutting mat under silver parts works best. Run
-   `python hsv_tuner.py` and adjust until the mask is black on the mat and white on parts,
-   with washer and nut holes visible. Press `p` and paste the printed lines into `config.py`.
+8. **Pick area** → `WORKSPACE_X/Y`. `python sorter.py --no-arm` marks unreachable parts in red.
 
-9. **Park, bins and grasps** → `PARK_SERVO`, `BINS`, `GRASP`. Park must hold the whole arm
-   outside the camera view. Bins must sit outside the pick area. `arm_console.py bins` visits
-   each one. Set gripper `open` / `close` angles per class, and the grasp `z`, about half
-   the part's height.
+9. **HSV fallback** → `HSV_*`. A green cutting mat under silver parts works best. Tune with
+   `python hsv_tuner.py` and paste the printed lines into `config.py`.
 
-10. **Dry run**. `python sorter.py --sim` runs the real camera and vision while the arm
-    motion is simulated and the packets are printed. Then run `python sorter.py`. Keep a
-    hand near the servo power switch for the first runs.
+10. **Pick heights, park and bins** → `PICK`, `PARK_SERVO`, `BINS`. `PICK[...]["z"]` is the
+    height of the part's top face. Park must hold the arm outside the camera view. Bins go
+    outside the pick area; `arm_console.py bins` visits each one.
+
+11. **Dry run.** `python sorter.py --sim`, then `python sorter.py`. Keep a hand near the
+    power switch for the first runs.
 
 ## Running
 
@@ -169,36 +159,40 @@ python sorter.py --sim              # everything except the real arm
 python sorter.py --no-yolo          # force the HSV fallback
 ```
 
-Window keys: `q` parks, then quits. `space` pauses. `r` retries parts that were skipped.
+Window keys: `q` parks, then quits. `space` pauses. `r` retries skipped spots.
 Each run writes `runs/picks_<time>.csv` with label, position, source, result and cycle
-time per pick. Use it for the pick success rate and cycle time metrics. Logs go to
-`runs/sorter.log`.
+time per pick.
 
-Offline demo with no camera or arm:
+## How a pick works
 
-```bash
-python tests/synthetic.py
-mkdir calibration
-copy tests\out\homography.json calibration\homography.json
-python sorter.py --camera tests/out/scene.png --sim --no-yolo
-```
+| Step | Pose | Magnet |
+|---|---|---|
+| approach | 40 mm above the part, magnet face pointing down | off |
+| descend | 3 mm below the part's top; the spring compresses and the face seats flat | off |
+| magnet on | hold for 250 ms while the coil current builds | **on** |
+| lift | 60 mm up | on |
+| to bin, lower | above the bin, then down to drop height | on |
+| magnet off | hold for 400 ms so residual magnetism lets go | **off** |
+| retreat, park | up, then out of the camera's view | off |
+
+The next scan checks the result. If the part is still there (not steel, or picked up off
+centre), it is retried once and then skipped.
 
 ## How the pieces work
 
 **Vision fusion.** YOLO at confidence ≥ `CONF_HIGH` is trusted. Between `CONF_LOW` and
 `CONF_HIGH`, it is only trusted if the outline's shape agrees: long and thin is a bolt,
 round with a hole is a washer, hex with a hole is a nut. Anything YOLO missed or doubted
-is classified by shape alone. Shape numbers are measured on the outline mapped to
-millimetres, so a tilted phone does not distort them. The pick point is the outline's
-centroid, shifted slightly toward a bolt's head. Each scan uses 5 frames, and a part
-must appear in at least 3 of them.
+is classified by shape alone. Shape is measured in millimetres on the table plane, so a
+tilted phone does not distort it. The pick point is the outline's centroid, shifted
+slightly toward a bolt's heavier head. Each scan uses 5 frames, and a part must appear in
+at least 3 of them.
 
-**IK.** θ1 = atan2(Y, X). The tool pitch is chosen next, pointing straight down (−90°)
-if possible. The wrist centre is found by stepping back along the tool by L4. Shoulder and
-elbow come from the law of cosines (elbow-up). θ4 = pitch − θ2 − θ3. θ5 turns the jaws
-across a bolt's long axis. If −90° is out of reach or hits a joint limit, the solver tries
-flatter or steeper pitches from `PITCH_CANDIDATES`. Every solution is checked against
-servo limits and a table-height floor for the tool, wrist and elbow.
+**IK.** θ1 = atan2(Y, X). The magnet points straight down (pitch −90°) when it can. The
+wrist centre is found by stepping back along the tool by L4. Shoulder and elbow come from
+the law of cosines (elbow-up). θ4 = pitch − θ2 − θ3. Wrist roll θ5 stays at 0. If −90° is
+out of reach or hits a joint limit, the solver tries nearby pitches. Every solution is
+checked against servo limits and a floor for the tool, wrist and elbow.
 
 **Edge cases.**
 
@@ -207,12 +201,11 @@ servo limits and a table-height floor for the tool, wrist and elbow.
 | Part out of reach | Skipped, never attempted; shown in red with the reason. |
 | Bin out of reach | The program refuses to start. |
 | Camera drops | The arm stays parked and the grabber reconnects. |
-| Stream resolution changes | Mapping rescales automatically; a different aspect ratio stops the scan. |
-| Lost ACK | Packet resent with the same seq; the board ignores duplicates, so nothing moves twice. |
+| Lost ACK | Packet resent with the same seq; the board ignores duplicates. |
 | Board stops answering | Stop, reconnect once, otherwise park and exit. |
-| Pick fails | The next scan still sees the part, so it is retried. After 2 failures that spot is skipped. |
-| Parts touching | Picked last. |
-| Magnet mode | The firmware drops the magnet if the PC goes silent for 5 s. |
+| Non-magnetic part | Verify sees it still there; it is retried once, then skipped. |
+| PC goes silent | Firmware switches the magnet off after 5 s. |
+| Magnet on too long | Firmware switches it off after 30 s, a coil temperature guard. |
 
 ## Serial protocol
 
@@ -220,37 +213,23 @@ servo limits and a table-height floor for the tool, wrist and elbow.
 
 | PC → board | Meaning |
 |---|---|
-| `M,seq,a1,a2,a3,a4,a5,g,ms` | Move 5 joints + gripper (servo degrees) over `ms` |
-| `H,seq,ms` | Go to firmware `HOME_POSE` |
-| `S,seq` / `R,seq` | Stop and hold / relax (outputs off) |
+| `M,seq,a1,a2,a3,a4,a5,mag,ms` | Move 5 servos (degrees), set magnet (1/0), over `ms` |
+| `H,seq,ms` | Go to firmware `HOME_POSE`, magnet off |
+| `S,seq` / `R,seq` | Stop and hold / relax (servo outputs and magnet off) |
 | `Q,seq` / `P,seq` | Query pose / ping |
 
 The board answers with `ACK,seq,actual_ms`, then `DONE,seq` when the move ends.
 `ERR,seq,CODE` means the packet was rejected; `POS`, `PONG` and `WARN` cover the rest.
-The board stretches `ms` when needed so no joint exceeds `MAX_SPEED_DPS`.
-
-This differs from the suggested `<a1,a2,a3,a4,gripper>`:
-
-* 5-DOF plus a gripper is six values, not five.
-* The sequence number tells the PC which move finished and lets the board ignore repeats.
-* The checksum rejects lines garbled on the wire.
-* The duration lets the board smooth the motion.
-
-For a Serial Monitor test, set `REQUIRE_CHECKSUM 0` (the default) and type
-`<M,1,90,90,90,90,90,60,1500>`.
+The magnet switches at the start of a move. The board stretches `ms` when needed so no
+joint exceeds `MAX_SPEED_DPS`.
 
 ## Known limitations
 
-* **Washers and a gripper.** A flat washer is 1–2 mm thick, so the fingertips must close
-  almost on the table. Use thin, slightly compliant fingertip pads, set `GRASP["washer"]["z"]`
-  around 0.5 mm, and expect a lower success rate than for nuts and bolts. The electromagnet
-  option avoids this problem for steel parts.
+* **Steel only.** Stainless, brass and aluminium fasteners will not lift.
+* **Bolts.** A bolt lying flat touches the magnet along a line, so holding force is much
+  lower than the 3 kg rating. It is still plenty for M3–M8 bolts.
 * **Torque.** Hobby-servo arms are weakest at the shoulder when stretched out. If the arm
-  sags at long reach, shrink `WORKSPACE_X`, slow `MAX_SPEED_DPS`, or fit a stronger shoulder servo.
-* **Accuracy.** Expect ±3–6 mm from plastic gears and printed links. Approach always from
-  the same hover point (the code does this), and use fingertip pads that tolerate a few mm.
-* **Roll angle.** Roll is exact when the tool points straight down; it is approximate
-  at other pitches.
-* **Unverified on hardware.** The host code is tested against a synthetic scene and a
-  simulated arm. The firmware has not been compiled or run here; expect to fix small
-  things on first flash.
+  sags at long reach, shrink `WORKSPACE_X` or slow `MAX_SPEED_DPS`.
+* **Tested in simulation only.** The host code passes its tests against a synthetic scene,
+  a simulated arm and a fake serial board. The firmware compiles for the Nano and ESP32.
+  None of it has run on the physical arm yet.

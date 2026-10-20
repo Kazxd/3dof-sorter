@@ -228,6 +228,10 @@ def test_sorter_end_to_end_sim():
         vals = [float(v) for v in p.split(",")[2:8]]
         for i in range(5):
             assert K.limit_violation(i, vals[i]) is None, p
+        assert vals[5] in (0.0, 1.0), "6th value must be the magnet state"
+    # one pick: approach/descend off, on at the part, carried on, off over the bin
+    assert [float(p.split(",")[7]) for p in moves[1:9]] == [0, 0, 1, 1, 1, 1, 0, 0]
+    assert float(moves[-1].split(",")[7]) == 0, "magnet must be off when parked"
     # the still image never changes, so every pick "fails"; after MAX_ATTEMPTS the
     # nearest part is skipped and the next one is tried
     assert s.stats["failed"] == 3

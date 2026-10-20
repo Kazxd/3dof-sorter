@@ -2,16 +2,16 @@
 kinematics.py - closed-form geometric IK / FK for a 5-DOF arm.
 
 Joint order everywhere: 0 base yaw, 1 shoulder pitch, 2 elbow pitch,
-3 wrist pitch, 4 wrist roll. (The gripper, index 5 in a pose, is not a joint here.)
+3 wrist pitch, 4 wrist roll. (The magnet, index 5 in a pose, is not a joint here.)
 
 Kinematic angle conventions (degrees, see the diagram in README.md):
     θ1 base      0 = arm points along +X; positive = counter-clockwise seen from above.
     θ2 shoulder  angle of L2 above horizontal; 0 = horizontal forward, 90 = straight up.
     θ3 elbow     angle of L3 relative to L2; 0 = in line, negative = bent downwards.
     θ4 wrist     angle of L4 relative to L3; 0 = in line.
-    φ  tool pitch = θ2 + θ3 + θ4 ; -90 = gripper pointing straight down.
-    θ5 roll      0 = jaws close sideways (perpendicular to the arm's vertical plane);
-                 positive = counter-clockwise seen from above while pointing down.
+    φ  tool pitch = θ2 + θ3 + θ4 ; -90 = magnet face pointing straight down.
+    θ5 roll      the magnet is round, so the sorter keeps roll at 0. solve() can still
+                 turn it (closing_axis_deg) if a directional tool is ever fitted.
 
 How the 5-DOF problem is made closed-form:
     1. θ1 comes straight from the target's bearing: atan2(Y, X).
@@ -20,7 +20,7 @@ How the 5-DOF problem is made closed-form:
     3. Shoulder + elbow reach the wrist centre: a 2-link triangle, solved
        with the law of cosines (elbow-up branch).
     4. θ4 = φ - θ2 - θ3 makes the tool point at φ.
-    5. θ5 turns the jaws to the requested direction on the table.
+    5. θ5 (wrist roll) stays at 0 for the round magnet.
     If a pitch fails (out of reach, joint limit, would hit the table) the next
     pitch in config.PITCH_CANDIDATES is tried.
 

@@ -4,18 +4,17 @@ arm_console.py - jog the arm by hand to calibrate servos and test the IK.
     python arm_console.py            real arm (SERIAL_PORT in config.py)
     python arm_console.py --sim      no hardware
 
-Servo index: 0 base, 1 shoulder, 2 elbow, 3 wrist pitch, 4 wrist roll, 5 gripper.
-Angles are SERVO degrees unless a command says otherwise.
+Index: 0 base, 1 shoulder, 2 elbow, 3 wrist pitch, 4 wrist roll (servo degrees), 5 magnet (1 on / 0 off).
 
   pose                     current 6-value pose (servo deg) + kinematic angles
   j <i> <deg> [ms]         move one servo                 e.g.  j 1 120
   n <i> <delta>            nudge one servo                e.g.  n 2 -5
   all a1 a2 a3 a4 a5 a6    move every servo at once
-  grip <deg>               gripper angle (magnet: 1 = on, 0 = off)
+  mag 1 | mag 0            electromagnet on / off
   home | park | stop | relax
   fk                       where the tool point is for the current pose (mm)
-  ik x y z [axis]          solve only, no motion (axis = jaw closing direction, deg)
-  go x y z [axis]          move the tool point there (gripper unchanged)
+  ik x y z                 solve only, no motion
+  go x y z                 move the magnet face there (magnet state unchanged)
   bins                     hover over each bin in turn
   help | quit
 """
@@ -29,7 +28,7 @@ from arm_link import ArmError, ArmLink, SimArm
 
 
 def show_pose(pose):
-    names = ("base", "shoulder", "elbow", "wrist_p", "wrist_r", "gripper")
+    names = ("base", "shoulder", "elbow", "wrist_p", "wrist_r", "magnet")
     print("  servo deg : " + "  ".join(f"{n}={a:.1f}" for n, a in zip(names, pose)))
     kin = [K.servo_to_kin(i, pose[i]) for i in range(5)]
     print("  kinematic : " + "  ".join(f"θ{i + 1}={a:.1f}" for i, a in enumerate(kin)))
@@ -91,14 +90,14 @@ def main():
             elif cmd == "all":
                 pose = [float(v) for v in a[:6]]
                 arm.move(pose, 1500)
-            elif cmd == "grip":
-                pose[5] = float(a[0])
-                arm.move(pose, C.GRIP_MS)
+            elif cmd == "mag":
+                pose[5] = 1 if a[0] in ("1", "on") else 0
+                arm.move(pose, C.MAGNET_SETTLE_MS)
             elif cmd == "home":
                 arm.home()
                 pose = list(C.HOME_SERVO)
             elif cmd == "park":
-                pose = list(C.PARK_SERVO)
+                pose = list(C.PARK_SERVO[:5]) + [pose[5]]
                 arm.move(pose, C.PARK_MS)
             elif cmd == "stop":
                 arm.stop()
@@ -109,8 +108,7 @@ def main():
                 show_pose(pose)
             elif cmd in ("ik", "go"):
                 x, y, z = (float(v) for v in a[:3])
-                axis = float(a[3]) if len(a) > 3 else None
-                sol = K.solve(x, y, z, axis)
+                sol = K.solve(x, y, z)
                 print(f"  pitch {sol.pitch:.0f}  kin {[round(v, 1) for v in sol.kin]}  "
                       f"servo {[round(v, 1) for v in sol.servo]}")
                 if cmd == "go":

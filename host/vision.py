@@ -152,7 +152,7 @@ def analyze_blob(outer, holes, offset=(0, 0), metric_H=None):
         shape = "unknown"          # e.g. a nut on its side, a bolt standing up, debris
 
     pick_u, pick_v = cu, cv_
-    if shape == "bolt" and C.BOLT_GRASP_SHIFT:
+    if shape == "bolt" and C.BOLT_PICK_SHIFT:
         # Which end is the head? Compare how wide each half of the outline is.
         a = np.radians(ang)
         e = np.array([np.cos(a), np.sin(a)])
@@ -163,8 +163,8 @@ def analyze_blob(outer, holes, offset=(0, 0), metric_H=None):
         if len(front) > 2 and len(back) > 2:
             w_front, w_back = np.ptp(front), np.ptp(back)
             head = 1 if w_front > 1.15 * w_back else (-1 if w_back > 1.15 * w_front else 0)
-            pick_u += head * C.BOLT_GRASP_SHIFT * length * e[0]
-            pick_v += head * C.BOLT_GRASP_SHIFT * length * e[1]
+            pick_u += head * C.BOLT_PICK_SHIFT * length * e[0]
+            pick_v += head * C.BOLT_PICK_SHIFT * length * e[1]
 
     return {
         "area": area, "cu": cu + ox, "cv": cv_ + oy, "pick": (pick_u + ox, pick_v + oy),
