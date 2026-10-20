@@ -58,9 +58,11 @@ across V+ and GND on the PCA9685. Never power the servos from the Nano's 5 V pin
 The full magnet wiring diagram is in [cad/README.md](cad/README.md#wiring).
 
 **End effector.** The gripper and its servo come off. A KK-P20/15 magnet (12 V,
-about 0.2 A, Ø20 × 15 mm) goes on, in the printed spring-loaded housing from `cad/`. The
-wrist roll servo stays as the mounting point. It is held at a fixed angle, because a
-round magnet has no orientation.
+about 0.2 A, Ø20 × 15 mm) goes on, in the printed spring-loaded housing from `cad/`. On arms
+without a wrist-roll servo, such as the RoboWings kit, the housing bolts under the old
+gripper plate (`TOOL_MOUNT = "plate"`). On arms with a roll servo, it can sit on that
+servo's horn instead (`"inline"`), with roll held fixed, because a round magnet has no
+orientation.
 
 ## Install
 
@@ -123,8 +125,9 @@ Without `best.pt` the sorter still runs on the HSV fallback alone.
    bend upward. If the joint moved that way, `direction = +1`; if not, `-1`. Set `min` /
    `max` where nothing collides, and copy them into `LIMIT_MIN` / `LIMIT_MAX` in the firmware.
 
-4. **Link lengths** → `L1`–`L4`. Measure axis centre to axis centre. L1 is table to shoulder
-   axis. L4 is the wrist pitch axis to the top of the printed adapter, plus 52 mm.
+4. **Link lengths and magnet offset** → `L1`–`L3`, `TOOL_MOUNT`, `TOOL_FORWARD`, `TOOL_DOWN`.
+   Measure axis centre to axis centre. L1 is table to shoulder axis. For the magnet head,
+   measure from the wrist pitch axis, as shown in the install guide.
 
 5. **Check the IK and the magnet.** In `arm_console.py`, run `go 160 0 30`, then
    `go 200 60 30`, then `go 140 -80 30`, and measure where the magnet face really is.
@@ -189,7 +192,8 @@ slightly toward a bolt's heavier head. Each scan uses 5 frames, and a part must 
 at least 3 of them.
 
 **IK.** θ1 = atan2(Y, X). The magnet points straight down (pitch −90°) when it can. The
-wrist centre is found by stepping back along the tool by L4. Shoulder and elbow come from
+wrist centre is found by subtracting the magnet head's offset (`TOOL_FORWARD` along the
+last link, `TOOL_DOWN` across it). Shoulder and elbow come from
 the law of cosines (elbow-up). θ4 = pitch − θ2 − θ3. Wrist roll θ5 stays at 0. If −90° is
 out of reach or hits a joint limit, the solver tries nearby pitches. Every solution is
 checked against servo limits and a floor for the tool, wrist and elbow.

@@ -35,20 +35,24 @@ These dimensions could not be confirmed from the product listings:
 | `mag_d`, `mag_h` | 20, 15 | Magnet body. Sellers agree on 20 × 15. |
 | `mag_screw_d` | 4.4 | Rear threaded hole. Sellers list M4; 4.4 clears both M4 and M3. |
 | `wire_hole_r` | 5.5 | Distance from the centre to where the leads leave the rear face. |
-| `horn_len`, `horn_w`, `horn_t` | 32.5, 6.5, 1.8 | Your wrist servo's cross horn: tip to tip, arm width, thickness. |
-| `wrist_holes` | 16 × 16 | Only for `adapter_bolt`: spacing of the screw holes the gripper used. |
+| `horn_len`, `horn_w`, `horn_t` | 32.5, 6.5, 1.8 | Only for `adapter_horn`: the roll servo's cross horn (tip to tip, arm width, thickness). |
+| `slot_r0`, `slot_r1` | 7, 15 | Only for `adapter_bolt`: the slots fit two holes 14–30 mm apart. |
 
 Change the numbers at the top of `magnet_effector.scad`, then re-export with
 `render_all.sh` or OpenSCAD → F6 → Export STL with `part` set to that part.
 
 ## Which adapter
 
-* **`adapter_horn`**: the gripper sat on a servo horn, usually on the wrist roll servo.
-  The cross horn drops into the pocket, and 4 small self-tapping screws go through the
-  horn's outer holes into the pilot holes. Fit the horn to the servo with its centre screw
-  through the 8 mm hole before bolting on the sleeve.
-* **`adapter_bolt`**: the gripper bolted to a bracket. Set `wrist_holes` to that hole
-  pattern and use M3 screws.
+* **`adapter_bolt`** (plate mount, `TOOL_MOUNT = "plate"`): for arms where the gripper sits
+  on a flat plate fixed to the wrist-pitch servo, with no wrist-roll servo. The RoboWings
+  kit looks like this. Strip the jaws and gripper servo off the plate, keep the plate, and
+  bolt the adapter flat underneath it. Its four radial slots fit any two holes 14–30 mm
+  apart on a line through the magnet centre. If none line up, drill two 3.2 mm holes
+  20 mm apart.
+* **`adapter_horn`** (inline mount, `TOOL_MOUNT = "inline"`): for arms with a wrist-roll
+  servo whose horn faces along the arm. The cross horn drops into the pocket, and 4 small
+  self-tapping screws go through the horn's outer holes. Fit the horn to the servo through
+  the 8 mm hole before bolting on the sleeve.
 
 ## Bill of materials
 
@@ -94,8 +98,8 @@ PLA is fine for a quick fit check of the adapter on your servo horn before the P
    on top of the flange.
 5. Fix the adapter to the wrist, then bolt the sleeve to it with 4 × M3 (nuts sit in the
    adapter's traps).
-6. Set `L4` in `host/config.py` to the distance from the wrist pitch axis to the adapter's
-   top face, plus 52 mm.
+6. Measure the head's offset from the wrist pitch axis and set `TOOL_MOUNT`, `TOOL_FORWARD`
+   and `TOOL_DOWN` in `host/config.py`. The install guide shows how.
 
 ## Wiring
 

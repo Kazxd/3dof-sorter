@@ -41,6 +41,23 @@ def test_ik_fk_round_trip():
     assert n > 100, f"only {n} grid points reachable - defaults inconsistent"
 
 
+def test_inline_mount_round_trip():
+    saved = (C.TOOL_FORWARD, C.TOOL_DOWN, C.TOOL_AXIS_DEG, dict(C.JOINTS["wrist_pitch"]))
+    C.TOOL_FORWARD, C.TOOL_DOWN, C.TOOL_AXIS_DEG = 110.0, 0.0, 0.0
+    C.JOINTS["wrist_pitch"].update(min=-90.0, max=270.0)          # don't let limits hide the maths
+    try:
+        n = 0
+        for x, y, z in ((150, 0, 3), (180, 60, 3), (200, -40, 20), (140, 90, 40)):
+            sol = K.solve(x, y, z)
+            fx, fy, fz, pitch = K.forward_kinematics(sol.kin)
+            assert max(abs(fx - x), abs(fy - y), abs(fz - z)) < 1e-6 and abs(pitch - sol.pitch) < 1e-6
+            n += 1
+        assert n == 4
+    finally:
+        C.TOOL_FORWARD, C.TOOL_DOWN, C.TOOL_AXIS_DEG = saved[:3]
+        C.JOINTS["wrist_pitch"] = saved[3]
+
+
 def test_prefers_vertical_tool():
     assert K.solve(160, 0, 3).pitch == -90
 

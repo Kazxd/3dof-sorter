@@ -3,7 +3,7 @@
 // Replaces the gripper of a 5-DOF hobby arm. Four printed parts:
 //
 //   adapter_horn  disk that screws onto the wrist servo's cross horn
-//   adapter_bolt  same disk, but with a 4-hole pattern for the gripper's old screw holes
+//   adapter_bolt  same disk with 4 radial slots: bolts flat under the old gripper plate
 //   sleeve        flanged tube bolted under the adapter (4x M3)
 //   carrier       cup that holds the magnet, slides 8 mm inside the sleeve on an M3 cross pin
 //   rigid_cup     no-spring alternative: magnet cup with its own flange
@@ -72,7 +72,8 @@ horn_len    = 32.5;   // SG90/MG90S cross horn, tip to tip           [measure]
 horn_w      = 6.5;    // arm width at its widest                     [measure]
 horn_t      = 1.8;    // arm thickness = pocket depth                [measure]
 horn_head_d = 6.0;    // clearance for the horn screw head
-wrist_holes = [16, 16];  // adapter_bolt: X/Y spacing of the gripper's old screw holes [measure]
+slot_r0     = 7.0;    // adapter_bolt: slots run from this radius ...
+slot_r1     = 15.0;   // ... to this one (hole spacing 14-30 mm fits)
 
 // ================================================================================
 module ring(od, id, h) { difference() { cylinder(d = od, h = h); translate([0, 0, -0.1]) cylinder(d = id, h = h + 0.2); } }
@@ -143,15 +144,17 @@ module adapter_horn() {
   }
 }
 
-// bolt version: 4 holes matching where the gripper used to bolt on
+// bolt / plate version: 4 radial slots in a "+" fit any two holes 14-30 mm apart on a
+// line through the magnet centre (or up to four in a "+"). If the old gripper plate has
+// no such pair, drill two 3.2 mm holes through it, 20 mm apart.
+// Screws go up from the sleeve side through a slot and the plate; nuts sit on the plate.
 module adapter_bolt() {
   difference() {
     adapter_base();
-    for (sx = [-1, 1], sy = [-1, 1])
-      translate([sx * wrist_holes[0] / 2, sy * wrist_holes[1] / 2, -0.1]) {
-        cylinder(d = m3_clear, h = adapter_t + 0.2);
-        cylinder(d = 6.2, h = 2.6);   // screw head recess on the sleeve side
-      }
+    for (a = [0 : 90 : 270]) rotate(a) {
+      translate([0, 0, -0.1]) hull() for (r = [slot_r0, slot_r1]) translate([r, 0, 0]) cylinder(d = m3_clear, h = adapter_t + 0.2);
+      translate([0, 0, -0.1]) hull() for (r = [slot_r0, slot_r1]) translate([r, 0, 0]) cylinder(d = 6.2, h = 2.6);   // head recess
+    }
   }
 }
 

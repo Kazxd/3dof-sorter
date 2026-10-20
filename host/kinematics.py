@@ -8,15 +8,17 @@ Kinematic angle conventions (degrees, see the diagram in README.md):
     θ1 base      0 = arm points along +X; positive = counter-clockwise seen from above.
     θ2 shoulder  angle of L2 above horizontal; 0 = horizontal forward, 90 = straight up.
     θ3 elbow     angle of L3 relative to L2; 0 = in line, negative = bent downwards.
-    θ4 wrist     angle of L4 relative to L3; 0 = in line.
-    φ  tool pitch = θ2 + θ3 + θ4 ; -90 = magnet face pointing straight down.
+    θ4 wrist     angle of the last link (wrist -> magnet head) relative to L3; 0 = in line.
+    ψ  last-link direction = θ2 + θ3 + θ4
+    φ  tool pitch = direction the magnet faces = ψ + TOOL_AXIS_DEG ; -90 = straight down.
+       ("plate" mount: TOOL_AXIS_DEG = -90, so the magnet faces down when the plate is level.)
     θ5 roll      the magnet is round, so the sorter keeps roll at 0. solve() can still
                  turn it (closing_axis_deg) if a directional tool is ever fitted.
 
 How the 5-DOF problem is made closed-form:
     1. θ1 comes straight from the target's bearing: atan2(Y, X).
     2. The arm is now planar (r, z). Choose a tool pitch φ (try -90 first),
-       step back from the target along the tool by L4 -> wrist centre.
+       step back from the target by the magnet head's offset -> wrist centre.
     3. Shoulder + elbow reach the wrist centre: a 2-link triangle, solved
        with the law of cosines (elbow-up branch).
     4. θ4 = φ - θ2 - θ3 makes the tool point at φ.
@@ -74,6 +76,13 @@ def limit_violation(i, servo_deg):
     return None
 
 
+def _tool_offset(psi):
+    """Wrist pitch axis -> magnet face, in the arm's (r, z) plane, for last-link angle psi (rad).
+    TOOL_FORWARD runs along the last link, TOOL_DOWN runs 90 deg below it."""
+    return (C.TOOL_FORWARD * math.cos(psi) + C.TOOL_DOWN * math.sin(psi),
+            C.TOOL_FORWARD * math.sin(psi) - C.TOOL_DOWN * math.cos(psi))
+
+
 # -----------------------------------------------------------------------------
 # forward kinematics (used for checks, tests and the console)
 # -----------------------------------------------------------------------------
@@ -81,10 +90,11 @@ def forward_kinematics(kin):
     """Kinematic angles -> (x, y, z, pitch) of the tool point, robot frame."""
     t1, t2, t3, t4 = (math.radians(a) for a in kin[:4])
     a3 = t2 + t3
-    a4 = a3 + t4
-    r = C.SHOULDER_OFFSET + C.L2 * math.cos(t2) + C.L3 * math.cos(a3) + C.L4 * math.cos(a4)
-    z = C.L1 + C.L2 * math.sin(t2) + C.L3 * math.sin(a3) + C.L4 * math.sin(a4)
-    return r * math.cos(t1), r * math.sin(t1), z, math.degrees(a4)
+    psi = a3 + t4
+    tr, tz = _tool_offset(psi)
+    r = C.SHOULDER_OFFSET + C.L2 * math.cos(t2) + C.L3 * math.cos(a3) + tr
+    z = C.L1 + C.L2 * math.sin(t2) + C.L3 * math.sin(a3) + tz
+    return r * math.cos(t1), r * math.sin(t1), z, math.degrees(psi) + C.TOOL_AXIS_DEG
 
 
 def joint_heights(kin):
@@ -101,10 +111,11 @@ def joint_heights(kin):
 # -----------------------------------------------------------------------------
 def _solve_planar(r, z, pitch_deg):
     """Shoulder / elbow / wrist angles that put the tool point at (r, z) with tool pitch φ."""
-    phi = math.radians(pitch_deg)
-    # wrist centre = target stepped back along the tool by L4
-    rw = r - C.SHOULDER_OFFSET - C.L4 * math.cos(phi)
-    zw = z - C.L1 - C.L4 * math.sin(phi)
+    psi = math.radians(pitch_deg - C.TOOL_AXIS_DEG)          # last-link angle for this pitch
+    tr, tz = _tool_offset(psi)
+    # wrist centre = target minus the magnet head's offset
+    rw = r - C.SHOULDER_OFFSET - tr
+    zw = z - C.L1 - tz
     d2 = rw * rw + zw * zw
 
     cos_t3 = (d2 - C.L2 ** 2 - C.L3 ** 2) / (2.0 * C.L2 * C.L3)
@@ -114,7 +125,7 @@ def _solve_planar(r, z, pitch_deg):
         raise Unreachable("too close")
     t3 = -math.acos(cos_t3)                                   # elbow-up branch
     t2 = math.atan2(zw, rw) - math.atan2(C.L3 * math.sin(t3), C.L2 + C.L3 * math.cos(t3))
-    t4 = phi - t2 - t3
+    t4 = psi - t2 - t3
     return math.degrees(t2), math.degrees(t3), wrap_deg(math.degrees(t4))
 
 

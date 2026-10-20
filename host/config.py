@@ -123,8 +123,19 @@ IDLE_WAIT_S = 1.5             # pause between scans when nothing is pickable
 L1 = 95.0      # table surface -> shoulder pitch axis (vertical)
 L2 = 105.0     # shoulder axis -> elbow axis
 L3 = 100.0     # elbow axis -> wrist pitch axis
-L4 = 130.0     # wrist pitch axis -> magnet face, spring at rest =
-               # (wrist pitch axis -> top of the printed adapter) + 52 mm (cad/README.md)
+# Magnet head, measured from the WRIST PITCH AXIS (the last joint before the magnet).
+# Two ways to mount it (see the install guide and cad/README.md):
+#   "plate":  housing bolted flat under the old gripper plate (arms without a wrist-roll
+#             servo, like the RoboWings kit). The magnet points 90 deg away from the
+#             plate, so it faces down while the plate is level.
+#   "inline": housing on a wrist-roll servo horn; the magnet points straight along the
+#             last link.
+TOOL_MOUNT = "plate"
+TOOL_FORWARD = 45.0  # along the plate / last link: wrist pitch axis -> magnet centre line  [measure]
+TOOL_DOWN = 62.0     # across the plate: wrist pitch axis -> magnet face, spring at rest     [measure]
+                     #   = (axis -> plate underside) + 52 mm housing ("inline": use 0)
+# For "inline" set TOOL_FORWARD = (wrist pitch axis -> adapter top) + 52 and TOOL_DOWN = 0.
+TOOL_AXIS_DEG = -90.0 if TOOL_MOUNT == "plate" else 0.0   # magnet axis relative to the last link
 SHOULDER_OFFSET = 0.0   # horizontal distance from base yaw axis to shoulder axis (0 on most kits)
 
 # Tool pitch the IK tries, in order. -90 = magnet face straight down (flat contact = full force).
@@ -148,11 +159,12 @@ MIN_ELBOW_Z = 25.0
 #                magnet is round so roll never changes - it stays at kinematic 0)
 #   direction : +1 or -1, so that a positive kinematic angle moves the right way
 #   min / max : servo-degree limits where nothing hits anything
-# Defaults assume the common kit convention "all servos at 90 = arm stands straight up".
+# The defaults are placeholders that keep the simulator consistent. Replace every number
+# with what arm_console.py shows on YOUR arm (install guide, step 6).
 JOINTS = {
     "base":        dict(zero=90.0, direction=+1, min=0.0,  max=180.0),
     "shoulder":    dict(zero=0.0,  direction=+1, min=15.0, max=165.0),
-    "elbow":       dict(zero=90.0, direction=+1, min=0.0,  max=180.0),
+    "elbow":       dict(zero=150.0, direction=+1, min=0.0, max=180.0),
     "wrist_pitch": dict(zero=90.0, direction=+1, min=0.0,  max=180.0),
     "wrist_roll":  dict(zero=90.0, direction=+1, min=0.0,  max=180.0),
 }
