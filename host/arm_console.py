@@ -4,11 +4,11 @@ arm_console.py - jog the arm by hand to calibrate servos and test the IK.
     python arm_console.py            real arm (SERIAL_PORT in config.py)
     python arm_console.py --sim      no hardware
 
-Index: 10 base, 11 shoulder, 12 elbow, 13 wrist pitch, 14 wrist roll (servo degrees), 15 magnet (1 on / 0 off).
+Index: 0 base, 1 shoulder, 2 elbow, 3 wrist pitch, 4 wrist roll (servo degrees), 5 magnet (1 on / 0 off).
 
   pose                     current 6-value pose (servo deg) + kinematic angles
-  j <i> <deg> [ms]         move one servo                 e.g.  j 10 120
-  n <i> <delta>            nudge one servo                e.g.  n 11 -5
+  j <i> <deg> [ms]         move one servo                 e.g.  j 1 120
+  n <i> <delta>            nudge one servo                e.g.  n 2 -5
   all a1 a2 a3 a4 a5 a6    move every servo at once
   mag 1 | mag 0            electromagnet on / off
   home | park | stop | relax

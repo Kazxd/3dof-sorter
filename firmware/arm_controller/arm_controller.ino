@@ -10,7 +10,7 @@
     PCA9685 VCC -> 5V of the board (logic only)    PCA9685 GND -> GND
     PCA9685 SDA -> Nano A4  / ESP32 GPIO21         PCA9685 SCL -> Nano A5 / ESP32 GPIO22
     PCA9685 V+ (green screw terminal) -> separate 5-6 V servo supply, >= 5 A
-    Channels 0..4 = base, shoulder, elbow, wrist pitch, wrist roll.
+    Channels 15..11 = base, shoulder, elbow, wrist pitch, wrist roll.
 
     Electromagnet (12 V supply, NOT the servo supply):
       +12V -----------+---------------- magnet lead A
@@ -46,11 +46,10 @@
 // USER CONFIG
 // ============================================================================
 #define BAUD                115200
-#define NUM_SERVOS          5       // protocol compatibility: base, shoulder, elbow, two inactive slots
-#define ACTIVE_SERVOS       3       // only base, shoulder and elbow receive PWM
+#define NUM_SERVOS          5       // base, shoulder, elbow, wrist pitch, wrist roll
 #define NUM_VALUES          6       // 5 angles + magnet state in every move packet
 #if defined(ESP32)
-#define MAGNET_PIN        25
+  #define MAGNET_PIN        25
 #else
   #define MAGNET_PIN        7       // Nano D7
 #endif
@@ -64,19 +63,21 @@
 #define SERVO_FREQ_HZ       50
 #define PCA_OSC_HZ          27000000UL   // trim 25-27 MHz if pulses measure off on a scope
 
+// Channels as wired on our arm (PCA9685 ports 15..11): base, shoulder, elbow, wrist pitch, wrist roll.
 const uint8_t  CHANNEL[NUM_SERVOS]         = {15, 14, 13, 12, 11};
-// Pulse widths at 0 deg and at SERVO_RANGE_DEG. Provisional 1000-2000 us range
-// matches the user's first bench-test range (~205-410 PCA9685 ticks at 50 Hz).
+// Pulse widths at 0 deg and at SERVO_RANGE_DEG. 1000-2000 us is the range bench-tested on
+// our servos (~205-410 PCA9685 ticks at 50 Hz). Widen towards 500-2500 only after checking
+// each joint's end stops with servo_test.ino.
 const uint16_t PULSE_MIN_US[NUM_SERVOS]    = {1000, 1000, 1000, 1000, 1000};
 const uint16_t PULSE_MAX_US[NUM_SERVOS]    = {2000, 2000, 2000, 2000, 2000};
 const float    SERVO_RANGE_DEG[NUM_SERVOS] = {180, 180, 180, 180, 180};
 // Hard limits in servo degrees: keep in sync with JOINTS min/max in host/config.py.
-const float    LIMIT_MIN[NUM_SERVOS]       = {60, 60, 60, 90, 90};
-const float    LIMIT_MAX[NUM_SERVOS]       = {120, 120, 120, 90, 90};
+const float    LIMIT_MIN[NUM_SERVOS]       = {0,   15,  0,   0,   0};
+const float    LIMIT_MAX[NUM_SERVOS]       = {180, 165, 180, 180, 180};
 // Pose written at power-up (keep in sync with HOME_SERVO in host/config.py).
 const float    HOME_POSE[NUM_SERVOS]       = {90,  90,  90,  90,  90};
 // Speed caps in deg/s. Big joints carry the most load: keep them slow.
-const float    MAX_SPEED_DPS[NUM_SERVOS]   = {45,  35,  35,  120, 180};
+const float    MAX_SPEED_DPS[NUM_SERVOS]   = {90,  60,  75,  120, 180};
 
 // ============================================================================
 // STATE
@@ -115,14 +116,6 @@ void setMagnet(bool on) {
 }
 
 void writeServo(uint8_t i, float deg) {
-  // Slots 3 and 4 stay in the serial packet for compatibility, but no PWM is
-  // sent to PCA9685 channels 12 and 11. This prevents the unreliable wrist
-  // servos from being driven; a passive magnet-leveling mount is required.
-  if (i >= ACTIVE_SERVOS) {
-    pwm.setPWM(CHANNEL[i], 0, 4096);  // fully off
-    written[i] = deg;
-    return;
-  }
   float frac = deg / SERVO_RANGE_DEG[i];
   if (frac < 0) frac = 0;
   if (frac > 1) frac = 1;

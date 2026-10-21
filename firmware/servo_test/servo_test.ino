@@ -5,7 +5,7 @@
   its own through the PCA9685, slowly, so you can check wiring, direction and range
   and find each servo's limits before the real firmware is used.
 
-  Same wiring as arm_controller.ino (PCA9685 on I2C, servos on channels 0-4,
+  Same wiring as arm_controller.ino (PCA9685 on I2C, servos on channels 15-11,
   magnet MOSFET on D7 / ESP32 GPIO25).
 
   Open the Serial Monitor at 115200 baud, line ending "Newline", and type:
@@ -41,9 +41,9 @@
 #define PCA_OSC_HZ     27000000UL
 #define STEP_DELAY_MS  15          // ms per degree: ~65 deg/s, gentle
 
-const uint8_t  CHANNEL[NUM_SERVOS]      = {0, 1, 2, 3, 4};
-const uint16_t PULSE_MIN_US[NUM_SERVOS] = {500, 500, 500, 500, 500};
-const uint16_t PULSE_MAX_US[NUM_SERVOS] = {2500, 2500, 2500, 2500, 2500};
+const uint8_t  CHANNEL[NUM_SERVOS]      = {15, 14, 13, 12, 11};   // as wired on our arm
+const uint16_t PULSE_MIN_US[NUM_SERVOS] = {1000, 1000, 1000, 1000, 1000};   // bench-tested range
+const uint16_t PULSE_MAX_US[NUM_SERVOS] = {2000, 2000, 2000, 2000, 2000};
 const char*    NAMES[NUM_SERVOS]        = {"base", "shoulder", "elbow", "wrist pitch", "wrist roll"};
 
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(0x40);
