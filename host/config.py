@@ -21,7 +21,7 @@ HERE = Path(__file__).resolve().parent
 # =============================================================================
 # IP Webcam (Android) MJPEG URL, an RTSP URL, a webcam index like 0,
 # or a path to a still image / video file for offline testing.
-CAMERA_URL = "http://192.168.1.2:8080/video"
+CAMERA_URL = "http://192.168.1.3:8080/video"
 CAMERA_RECONNECT_S = 2.0      # wait between reconnect attempts
 CAMERA_STALE_S = 2.0          # no new frame for this long = camera counts as down
 
@@ -55,8 +55,8 @@ ARUCO_MARKERS_MM = {          # marker id -> robot-frame XY of the marker CENTRE
 
 # Pick area in the robot frame. Parts outside this rectangle are ignored
 # (keeps the bins, the robot base and table edges out of the search).
-WORKSPACE_X = (110.0, 230.0)
-WORKSPACE_Y = (-110.0, 110.0)
+WORKSPACE_X = (188.5, 190.0)  # temporary test zone only; expand after calibration
+WORKSPACE_Y = (-5.0, 5.0)
 
 # =============================================================================
 # 3. VISION
@@ -117,62 +117,55 @@ MAX_ATTEMPTS = 2              # failed picks at one spot before it is skipped fo
 IDLE_WAIT_S = 1.5             # pause between scans when nothing is pickable
 
 # =============================================================================
-# 4. ARM GEOMETRY  - MEASURE YOUR PRINTED ARM (axis centre to axis centre)
+# 4. ARM GEOMETRY -- provisional measurements for the user's 3-DOF arm
 # =============================================================================
-# The values below are placeholders in the size range of RoboWings-style 5-DOF arms.
-L1 = 95.0      # table surface -> shoulder pitch axis (vertical)
-L2 = 105.0     # shoulder axis -> elbow axis
-L3 = 100.0     # elbow axis -> wrist pitch axis
-# Magnet head, measured from the WRIST PITCH AXIS (the last joint before the magnet).
-# Two ways to mount it (see the install guide and cad/README.md):
-#   "plate":  housing bolted flat under the old gripper plate (arms without a wrist-roll
-#             servo, like the RoboWings kit). The magnet points 90 deg away from the
-#             plate, so it faces down while the plate is level.
-#   "inline": housing on a wrist-roll servo horn; the magnet points straight along the
-#             last link.
-TOOL_MOUNT = "plate"
-TOOL_FORWARD = 45.0  # along the plate / last link: wrist pitch axis -> magnet centre line  [measure]
-TOOL_DOWN = 62.0     # across the plate: wrist pitch axis -> magnet face, spring at rest     [measure]
-                     #   = (axis -> plate underside) + 52 mm housing ("inline": use 0)
-# For "inline" set TOOL_FORWARD = (wrist pitch axis -> adapter top) + 52 and TOOL_DOWN = 0.
-TOOL_AXIS_DEG = -90.0 if TOOL_MOUNT == "plate" else 0.0   # magnet axis relative to the last link
-SHOULDER_OFFSET = 0.0   # horizontal distance from base yaw axis to shoulder axis (0 on most kits)
+# Units are mm. L1: table to shoulder rotation axis; L2: shoulder-to-elbow axes; L3: elbow axis to magnet contact-face center, along the forearm.
+# L3: elbow axis to the magnet's suspension/pivot axis.
+L1 = 90.0
+L2 = 120.0
+L3 = 100.0
 
-# Tool pitch the IK tries, in order. -90 = magnet face straight down (flat contact = full force).
-# Flatter angles (-60, -45) extend reach far away; steeper ones (-110, -120) help close in.
-PITCH_CANDIDATES = [-90, -85, -95, -80, -100, -75, -105, -70, -110, -65, -120, -60, -55, -50, -45]
+# Rigid magnet mount: L3 ends at the centre of the magnet's flat contact face.
+# The line from the elbow axis to that point is aligned with the forearm (0 deg).
+# With the forearm horizontal, the magnet face points straight down. At other poses,
+# its pitch follows the forearm because there is no active wrist-pitch joint.
+TOOL_MOUNT = "rigid"
+TOOL_FORWARD = 0.0       # no extra local forward offset; included in L3 measurement
+TOOL_DOWN = 0.0          # no world-vertical offset for a rigid mount
+TOOL_AXIS_DEG = -90.0    # face-down orientation relative to a horizontal forearm
+TOOL_SELF_LEVELING = False
+SHOULDER_OFFSET = 0.0
 
-# Safety floor: no IK solution may put these points lower than this (mm above table).
-# The tool point may go a little below the table: the spring in the magnet housing
-# (8 mm travel) absorbs it and keeps the magnet face pressed flat.
+# Preferred absolute tool pitch. For this 3-DOF arm this is a preference/check,
+# not a command to a nonexistent wrist-pitch servo.
+PITCH_CANDIDATES = [-90]
+TOOL_PITCH_TOLERANCE_DEG = 25.0  # initial limit; validate contact empirically
+
+# Safety floor checks (mm above table).
 MIN_TCP_Z = -4.0
 MIN_WRIST_Z = 15.0
 MIN_ELBOW_Z = 25.0
 
 # =============================================================================
-# 5. SERVO CALIBRATION  (find with arm_console.py)
+# 5. SERVO CALIBRATION -- provisional, verify each limit mechanically
 # =============================================================================
-# servo_deg = zero + direction * kinematic_deg
-#   zero      : servo angle at which the joint sits at its kinematic 0
-#               (base: pointing along +X; shoulder: link horizontal-forward;
-#                elbow / wrist pitch: straight in line; roll: any fixed angle, the
-#                magnet is round so roll never changes - it stays at kinematic 0)
-#   direction : +1 or -1, so that a positive kinematic angle moves the right way
-#   min / max : servo-degree limits where nothing hits anything
-# The defaults are placeholders that keep the simulator consistent. Replace every number
-# with what arm_console.py shows on YOUR arm (install guide, step 6).
+# From the stated observations: 90 deg is the base-forward / shoulder-horizontal /
+# elbow-straight pose. Increasing all three servo commands moves in the positive
+# kinematic direction. 60..120 deg is only the current conservative test window.
+# W4/W5 are not actuated by the adapted firmware; their command slots stay at 90.
 JOINTS = {
-    "base":        dict(zero=90.0, direction=+1, min=0.0,  max=180.0),
-    "shoulder":    dict(zero=0.0,  direction=+1, min=15.0, max=165.0),
-    "elbow":       dict(zero=150.0, direction=+1, min=0.0, max=180.0),
-    "wrist_pitch": dict(zero=90.0, direction=+1, min=0.0,  max=180.0),
-    "wrist_roll":  dict(zero=90.0, direction=+1, min=0.0,  max=180.0),
+    "base":        dict(zero=90.0, direction=+1, min=5.0, max=175.0),
+    "shoulder":    dict(zero=90.0, direction=+1, min=10.0, max=160.0),
+    "elbow":       dict(zero=90.0, direction=+1, min=10.0, max=160.0),
+    "wrist_pitch": dict(zero=90.0, direction=+1, min=10.0, max=160.0),
+    "wrist_roll":  dict(zero=90.0, direction=+1, min=10.0, max=160.0),
 }
 
-# Full 6-value poses: 5 servo angles (base, shoulder, elbow, wrist pitch, wrist roll)
-# followed by the magnet state (1 = on, 0 = off).
-HOME_SERVO = [90, 90, 90, 90, 90, 0]        # must match HOME_POSE in the firmware
-PARK_SERVO = [170, 110, 40, 60, 90, 0]      # arm folded OUT of the camera's view
+# Protocol still contains 5 servo angles + magnet state. Keep both poses six-wide.
+HOME_SERVO = [90, 90, 90, 90, 90, 0]
+# Bench-safe placeholder only. After collision-checking, choose a PARK pose that
+# moves the arm out of the camera view and remains inside the calibrated limits.
+PARK_SERVO = [90, 90, 90, 90, 90, 0]
 
 # =============================================================================
 # 6. ELECTROMAGNET, PICK HEIGHTS AND BINS
@@ -197,16 +190,16 @@ RELEASE_DWELL_MS = 400     # magnet off over the bin, wait before moving (residu
 # Bin drop points in the robot frame: (X, Y, Z of the tool point when releasing).
 # Put the bins outside WORKSPACE_* so they are never detected as parts.
 BINS = {
-    "washer": (70.0,  160.0, 50.0),
-    "nut":    (15.0,  175.0, 50.0),
-    "bolt":   (70.0, -160.0, 50.0),
-}
+    "washer": (195.0,   0.0, 50.0),
+    "nut":    (194.0,  20.0, 50.0),
+    "bolt":   (194.0, -20.0, 50.0),
+}  # provisional: each bin target is near a 195 mm radius
 
 # =============================================================================
 # 7. MOTION
 # =============================================================================
-APPROACH_HEIGHT = 40.0   # hover this far above the pick / drop point before going straight down
-LIFT_HEIGHT = 60.0       # lift this far after the magnet grabs
+APPROACH_HEIGHT = 15.0   # conservative for the current three-joint test workspace   # hover this far above the pick / drop point before going straight down
+LIFT_HEIGHT = 15.0       # increase only after a staged reachability test       # lift this far after the magnet grabs
 MOVE_MS = 1200           # free-space moves (firmware may stretch it to respect its speed limits)
 DESCEND_MS = 700         # straight down / up near the part
 PARK_MS = 1200
@@ -214,7 +207,7 @@ PARK_MS = 1200
 # =============================================================================
 # 8. SERIAL LINK
 # =============================================================================
-SERIAL_PORT = "auto"     # "auto" picks the first USB-serial adapter; or "COM5", "/dev/ttyUSB0"
+SERIAL_PORT = "tcp://192.168.4.1:8888"  # ESP32 Wi-Fi TCP
 SERIAL_BAUD = 115200
 READY_TIMEOUT_S = 4.0    # boards reset when the port opens; wait this long for <READY>
 ACK_TIMEOUT_S = 0.5

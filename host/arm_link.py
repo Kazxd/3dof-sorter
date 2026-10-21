@@ -1,5 +1,10 @@
 """
-arm_link.py - USB serial link to the arm controller (Arduino Nano / ESP32 + PCA9685).
+arm_link.py - link to the arm controller (Arduino Nano / ESP32 + PCA9685),
+over USB serial or over WiFi (TCP, ESP32 only).
+
+Set the port in config.SERIAL_PORT or with --port:
+    "auto" / "COM5" / "/dev/ttyUSB0"      USB serial
+    "tcp://192.168.1.50:8888"             WiFi to the ESP32
 
 Packet format (ASCII, one per line):
 
@@ -14,7 +19,7 @@ Host -> board
     P,seq                       ping
 
 Board -> host
-    <READY,ARM5,1>              after reset
+    <READY,ARM5,1>              after reset (or when a WiFi client connects)
     <ACK,seq[,ms]>              packet accepted; for moves, ms = real duration after speed limits
     <DONE,seq>                  motion for seq finished (DONE,seq,PREEMPTED if replaced)
     <ERR,seq,CODE>              rejected (CHECKSUM, FORMAT, RANGE, UNKNOWN, ...)
@@ -29,6 +34,7 @@ Why not a bare <a1,a2,a3,a4,a5,magnet>: with no sequence number or checksum the
 host cannot tell a garbled line from a good one, or know when a move finished.
 """
 import logging
+import socket
 import threading
 import time
 
@@ -78,6 +84,32 @@ def fmt(a):
 
 
 # =============================================================================
+# WiFi transport: looks like serial.Serial (read / write / close)
+# =============================================================================
+class _TcpSerial:
+    def __init__(self, hostport, timeout=3.0):
+        host, _, port = hostport.partition(":")
+        self.sock = socket.create_connection((host, int(port or 8888)), timeout=timeout)
+        self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        self.sock.settimeout(0.05)
+
+    def read(self, n):
+        try:
+            data = self.sock.recv(n)
+        except socket.timeout:
+            return b""
+        if not data:
+            raise OSError("connection closed by the ESP32")
+        return data
+
+    def write(self, data):
+        self.sock.sendall(data)
+
+    def close(self):
+        self.sock.close()
+
+
+# =============================================================================
 # real board
 # =============================================================================
 class ArmLink:
@@ -93,6 +125,10 @@ class ArmLink:
         self._ready = False
         self._reader = None
         self._running = False
+        # WIFI_HEARTBEAT_PATCH_V1: prevent frames from concurrent command/heartbeat writes interleaving.
+        self._tx_lock = threading.Lock()
+        self._heartbeat_stop = threading.Event()
+        self._heartbeat_thread = None
         self.pose = list(C.HOME_SERVO)
 
     # ------------------------------------------------------------ connection
@@ -113,14 +149,19 @@ class ArmLink:
         if not port:
             raise ArmError("no serial port found - is the board plugged in? (set SERIAL_PORT)")
         try:
-            self.ser = serial.Serial(port, self.baud, timeout=0.05)
-        except serial.SerialException as e:
-            raise ArmError(f"cannot open {port}: {e}  (is the Arduino IDE serial monitor open?)")
+            if str(port).startswith("tcp://"):
+                self.ser = _TcpSerial(port[6:])
+            else:
+                self.ser = serial.Serial(port, self.baud, timeout=0.05)
+        except (serial.SerialException, OSError) as e:
+            raise ArmError(f"cannot open {port}: {e}  "
+                           f"(USB: is the Arduino IDE serial monitor open? "
+                           f"WiFi: is the ESP32 on the network and the IP right?)")
         self.port = port
         self._running = True
         self._reader = threading.Thread(target=self._read_loop, daemon=True, name="ArmReader")
         self._reader.start()
-        log.info("serial open on %s @ %d, waiting for board", port, self.baud)
+        log.info("link open on %s, waiting for board", port)
 
         deadline = time.time() + C.READY_TIMEOUT_S        # Nano / ESP32 reset on open
         with self._cv:
@@ -129,15 +170,25 @@ class ArmLink:
         if not self._ready:
             log.info("no READY banner (board may not have reset) - trying ping")
         self.ping()
-        log.info("arm controller online")
+        self._heartbeat_stop.clear()
+        self._heartbeat_thread = threading.Thread(
+            target=self._heartbeat_loop, daemon=True, name="ArmHeartbeat"
+        )
+        self._heartbeat_thread.start()
+        log.info("arm controller online; 1 s heartbeat enabled")
 
     def close(self):
+        self._heartbeat_stop.set()
         self._running = False
         if self.ser:
             try:
-                self.ser.close()
+                with self._tx_lock:
+                    self.ser.close()
             except Exception:
                 pass
+        thread = self._heartbeat_thread
+        if thread and thread is not threading.current_thread():
+            thread.join(timeout=1.0)
 
     # ------------------------------------------------------------ rx thread
     def _read_loop(self):
@@ -146,7 +197,7 @@ class ArmLink:
             try:
                 chunk = self.ser.read(256)
             except Exception as e:
-                log.error("serial read failed: %s", e)
+                log.error("link read failed: %s", e)
                 self._running = False
                 with self._cv:
                     self._cv.notify_all()
@@ -214,7 +265,7 @@ class ArmLink:
                     err = self._replies.pop(("ERR", seq))
                     raise ArmError(f"board error for seq {seq}: {','.join(err[2:])}")
                 if not self._running:
-                    raise ArmError("serial link closed")
+                    raise ArmError("link closed")
                 remaining = deadline - time.time()
                 if remaining <= 0:
                     return None
@@ -223,15 +274,32 @@ class ArmLink:
                 on_wait()
 
     def _command(self, payload_fields, done_timeout=None, reply=("ACK",), on_wait=None):
-        seq = self._next_seq()
-        cmd, rest = payload_fields[0], payload_fields[1:]
-        frame = encode(",".join([cmd, str(seq)] + [str(f) for f in rest]))
-        got = None
-        for attempt in range(C.SEND_RETRIES):
+        seq = None
+        # Allocate the sequence and write the first frame atomically. The heartbeat
+        # uses the same path and can run while another command waits for DONE.
+        with self._tx_lock:
+            if not self._running or self.ser is None:
+                raise ArmError("link closed")
+            seq = self._next_seq()
+            cmd, rest = payload_fields[0], payload_fields[1:]
+            frame = encode(",".join([cmd, str(seq)] + [str(f) for f in rest]))
             try:
                 self.ser.write(frame)
-            except Exception as e:
-                raise ArmError(f"serial write failed: {e}")
+            except Exception as exc:
+                raise ArmError(f"link write failed: {exc}") from exc
+
+        got = None
+        for attempt in range(C.SEND_RETRIES):
+            if attempt > 0:
+                try:
+                    with self._tx_lock:
+                        if not self._running or self.ser is None:
+                            raise ArmError("link closed")
+                        self.ser.write(frame)
+                except Exception as e:
+                    if isinstance(e, ArmError):
+                        raise
+                    raise ArmError(f"link write failed: {e}")
             got = self._wait(reply, seq, C.ACK_TIMEOUT_S, on_wait)
             if got:
                 break
@@ -239,13 +307,24 @@ class ArmLink:
         if not got:
             raise ArmError(f"board did not answer {cmd} after {C.SEND_RETRIES} tries")
         if done_timeout is not None:
-            if len(got) >= 3 and got[2].isdigit():      # ACK carries the real duration
+            if len(got) >= 3 and got[2].isdigit():  # ACK carries actual duration
                 done_timeout = max(done_timeout, int(got[2]) / 1000.0 + C.DONE_MARGIN_S)
             if not self._wait(("DONE",), seq, done_timeout, on_wait):
                 raise ArmError(f"move {seq} did not finish within {done_timeout:.1f} s")
         return got
 
     # ------------------------------------------------------------ public API
+    def _heartbeat_loop(self):
+        """Keep the ESP32 watchdog alive during long moves and while magnet is on."""
+        while self._running and not self._heartbeat_stop.wait(1.0):
+            try:
+                self.ping()
+            except Exception as exc:
+                if self._running and not self._heartbeat_stop.is_set():
+                    log.warning("Wi-Fi/controller heartbeat failed: %s", exc)
+                if not self._running:
+                    return
+
     def ping(self):
         self._command(["P"], reply=("PONG",))
 

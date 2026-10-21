@@ -1,7 +1,7 @@
 /*
-  arm_controller.ino - low-level executor for the 5-DOF electromagnet sorter arm
+  arm_controller.ino - ESP32 low-level executor for the 3-DOF electromagnet sorter arm
   ==============================================================================
-  Board : Arduino Nano (ATmega328P) or ESP32 dev board
+  Board : ESP32 dev board (Wi-Fi TCP is the primary host connection)
   Driver: PCA9685 16-channel PWM board (Adafruit or clone), I2C address 0x40
   Lib   : "Adafruit PWM Servo Driver Library" (Library Manager)
   Tool  : KK-P20/15 12 V lifting electromagnet (~0.2 A), switched by a MOSFET
@@ -10,7 +10,7 @@
     PCA9685 VCC -> 5V of the board (logic only)    PCA9685 GND -> GND
     PCA9685 SDA -> Nano A4  / ESP32 GPIO21         PCA9685 SCL -> Nano A5 / ESP32 GPIO22
     PCA9685 V+ (green screw terminal) -> separate 5-6 V servo supply, >= 5 A
-    Channels 15..11 = base, shoulder, elbow, wrist pitch, wrist roll.
+    Channels 0..4 = base, shoulder, elbow, wrist pitch, wrist roll.
 
     Electromagnet (12 V supply, NOT the servo supply):
       +12V -----------+---------------- magnet lead A
@@ -39,6 +39,10 @@
   REQUIRE_CHECKSUM at 0 and type e.g.  <M,1,90,90,90,90,90,0,1500>
 */
 
+#if !defined(ESP32)
+#error "This sketch is ESP32-only; select an ESP32 board in the Arduino IDE."
+#endif
+#include <WiFi.h>
 #include <Wire.h>
 #include <Adafruit_PWMServoDriver.h>
 
@@ -46,13 +50,20 @@
 // USER CONFIG
 // ============================================================================
 #define BAUD                115200
-#define NUM_SERVOS          5       // base, shoulder, elbow, wrist pitch, wrist roll
+// WIFI_PATCH_APPLIED_V1
+// Leave WIFI_SSID empty to start a direct-access-point network (no router needed).
+// For router/phone-hotspot mode, fill WIFI_SSID and WIFI_PASSWORD, then use the
+// ESP32 IP printed on Serial as host/config.py SERIAL_PORT.
+#define WIFI_SSID ""
+#define WIFI_PASSWORD         ""
+#define WIFI_AP_SSID          "RobotArm-ESP32"
+#define WIFI_AP_PASSWORD      "ArmSort_26!WiFi"  // change to your own strong password
+#define TCP_PORT              8888
+#define WIFI_CONNECT_TIMEOUT_MS 12000UL
+#define NUM_SERVOS          5       // protocol compatibility: base, shoulder, elbow, two inactive slots
+#define ACTIVE_SERVOS       3       // only base, shoulder and elbow receive PWM
 #define NUM_VALUES          6       // 5 angles + magnet state in every move packet
-#if defined(ESP32)
-  #define MAGNET_PIN        25
-#else
-  #define MAGNET_PIN        7       // Nano D7
-#endif
+#define MAGNET_PIN        25      // ESP32 GPIO25; MOSFET gate driver only
 #define MAGNET_ACTIVE_HIGH  1       // 0 if your switch module turns on with a LOW input
 #define MAGNET_MAX_ON_MS    30000UL // safety: coil off after this long on (it runs warm)
 #define HOST_TIMEOUT_MS     5000UL  // safety: coil off if the PC goes silent this long
@@ -63,26 +74,35 @@
 #define SERVO_FREQ_HZ       50
 #define PCA_OSC_HZ          27000000UL   // trim 25-27 MHz if pulses measure off on a scope
 
-// Channels as wired on our arm (PCA9685 ports 15..11): base, shoulder, elbow, wrist pitch, wrist roll.
 const uint8_t  CHANNEL[NUM_SERVOS]         = {15, 14, 13, 12, 11};
-// Pulse widths at 0 deg and at SERVO_RANGE_DEG. 1000-2000 us is the range bench-tested on
-// our servos (~205-410 PCA9685 ticks at 50 Hz). Widen towards 500-2500 only after checking
-// each joint's end stops with servo_test.ino.
+// Pulse widths at 0 deg and at SERVO_RANGE_DEG. Provisional 1000-2000 us range
+// matches the user's first bench-test range (~205-410 PCA9685 ticks at 50 Hz).
 const uint16_t PULSE_MIN_US[NUM_SERVOS]    = {1000, 1000, 1000, 1000, 1000};
 const uint16_t PULSE_MAX_US[NUM_SERVOS]    = {2000, 2000, 2000, 2000, 2000};
 const float    SERVO_RANGE_DEG[NUM_SERVOS] = {180, 180, 180, 180, 180};
 // Hard limits in servo degrees: keep in sync with JOINTS min/max in host/config.py.
-const float    LIMIT_MIN[NUM_SERVOS]       = {0,   15,  0,   0,   0};
-const float    LIMIT_MAX[NUM_SERVOS]       = {180, 165, 180, 180, 180};
+const float    LIMIT_MIN[NUM_SERVOS]       = {5, 10, 10, 10, 10};
+const float    LIMIT_MAX[NUM_SERVOS]       = {175, 160, 160, 160, 160};
 // Pose written at power-up (keep in sync with HOME_SERVO in host/config.py).
 const float    HOME_POSE[NUM_SERVOS]       = {90,  90,  90,  90,  90};
 // Speed caps in deg/s. Big joints carry the most load: keep them slow.
-const float    MAX_SPEED_DPS[NUM_SERVOS]   = {90,  60,  75,  120, 180};
+const float    MAX_SPEED_DPS[NUM_SERVOS]   = {45,  35,  35,  120, 180};
 
 // ============================================================================
 // STATE
 // ============================================================================
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(PCA9685_ADDR);
+WiFiServer tcpServer(TCP_PORT);
+WiFiClient tcpClient;
+bool tcpSession = false;
+bool wifiApMode = false;
+
+// Replies follow the active TCP session. Serial remains available only as a local
+// ESP32 bench/debug path; normal host operation defaults to Wi-Fi.
+Stream& protocolOut() {
+  if (tcpSession && tcpClient && tcpClient.connected()) return tcpClient;
+  return Serial;
+}
 
 float startPos[NUM_SERVOS];
 float targetPos[NUM_SERVOS];
@@ -116,6 +136,14 @@ void setMagnet(bool on) {
 }
 
 void writeServo(uint8_t i, float deg) {
+  // Slots 3 and 4 remain in the packet for protocol compatibility, but this
+  // 3-DOF arm has no active wrist pitch/roll; both PCA9685 outputs stay disabled.
+  // The magnet is rigidly mounted and its pitch follows shoulder + elbow.
+  if (i >= ACTIVE_SERVOS) {
+    pwm.setPWM(CHANNEL[i], 0, 4096);  // fully off
+    written[i] = deg;
+    return;
+  }
   float frac = deg / SERVO_RANGE_DEG[i];
   if (frac < 0) frac = 0;
   if (frac > 1) frac = 1;
@@ -137,17 +165,20 @@ void outputsOff() {
 // REPLIES  (no checksum on replies; the PC accepts plain frames)
 // ============================================================================
 void reply2(const char* kind, long seq) {
-  Serial.print('<'); Serial.print(kind); Serial.print(','); Serial.print(seq); Serial.println('>');
+  Stream& out = protocolOut();
+  out.print('<'); out.print(kind); out.print(','); out.print(seq); out.println('>');
 }
 
 void replyAck(long seq, long durMs) {
-  Serial.print(F("<ACK,")); Serial.print(seq);
-  if (durMs >= 0) { Serial.print(','); Serial.print(durMs); }
-  Serial.println('>');
+  Stream& out = protocolOut();
+  out.print(F("<ACK,")); out.print(seq);
+  if (durMs >= 0) { out.print(','); out.print(durMs); }
+  out.println('>');
 }
 
 void replyErr(long seq, const __FlashStringHelper* code) {
-  Serial.print(F("<ERR,")); Serial.print(seq); Serial.print(','); Serial.print(code); Serial.println('>');
+  Stream& out = protocolOut();
+  out.print(F("<ERR,")); out.print(seq); out.print(','); out.print(code); out.println('>');
 }
 
 // ============================================================================
@@ -174,7 +205,8 @@ unsigned long planDuration(const float* target, unsigned long requestedMs) {
 void finishActive(bool preempted) {
   if (activeSeq < 0) return;
   if (preempted) {
-    Serial.print(F("<DONE,")); Serial.print(activeSeq); Serial.println(F(",PREEMPTED>"));
+    Stream& out = protocolOut();
+    out.print(F("<DONE,")); out.print(activeSeq); out.println(F(",PREEMPTED>"));
   } else {
     reply2("DONE", activeSeq);
   }
@@ -285,8 +317,7 @@ void handleFrame(char* frame) {
   }
 
   switch (cmd) {
-    case 'P':                                     // the PC pings once per (re)connect, and its
-      lastSeq = -1;                               // seq counter restarts, so forget the old seq
+    case 'P':                                     // connection setup resets sequence state
       reply2("PONG", seq);
       break;
 
@@ -303,7 +334,7 @@ void handleFrame(char* frame) {
       if (!parseNum(tok[2 + NUM_SERVOS], mag)) { replyErr(seq, F("NUMBER")); return; }
       long ms;
       if (!parseLong(tok[2 + NUM_VALUES], ms) || ms < 0 || ms > 60000L) { replyErr(seq, F("DURATION")); return; }
-      if (clamped) { Serial.print(F("<WARN,CLAMP,")); Serial.print(seq); Serial.println('>'); }
+      if (clamped) { Stream& out = protocolOut(); out.print(F("<WARN,CLAMP,")); out.print(seq); out.println('>'); }
       startMove(target, mag > 0.5f, (unsigned long)ms, seq);
       break;
     }
@@ -333,10 +364,12 @@ void handleFrame(char* frame) {
       break;
 
     case 'Q':                                     // POS,seq,a1..a5,mag,moving
-      Serial.print(F("<POS,")); Serial.print(seq);
-      for (uint8_t i = 0; i < NUM_SERVOS; i++) { Serial.print(','); Serial.print(curPos[i], 1); }
-      Serial.print(','); Serial.print(magnetOn ? 1 : 0);
-      Serial.print(','); Serial.print(moving ? 1 : 0); Serial.println('>');
+      { Stream& out = protocolOut();
+        out.print(F("<POS,")); out.print(seq);
+        for (uint8_t i = 0; i < NUM_SERVOS; i++) { out.print(','); out.print(curPos[i], 1); }
+        out.print(','); out.print(magnetOn ? 1 : 0);
+        out.print(','); out.print(moving ? 1 : 0); out.println('>');
+      }
       break;
 
     default:
@@ -344,9 +377,11 @@ void handleFrame(char* frame) {
   }
 }
 
-void readSerial() {
-  while (Serial.available() > 0) {
-    char c = (char)Serial.read();
+void readActiveInput() {
+  Stream& input = (tcpSession && tcpClient && tcpClient.connected())
+                    ? (Stream&)tcpClient : (Stream&)Serial;
+  while (input.available() > 0) {
+    char c = (char)input.read();
     if (c == '<') { inFrame = true; rxLen = 0; continue; }   // '<' always starts a new frame
     if (!inFrame) continue;                                   // ignore noise between frames
     if (c == '>') {
@@ -362,17 +397,121 @@ void readSerial() {
 }
 
 // ============================================================================
+// WI-FI NETWORK
+// ============================================================================
+void startWiFiNetwork() {
+  WiFi.persistent(false);
+  WiFi.setSleep(false);
+
+  bool connectedToRouter = false;
+  if (strlen(WIFI_SSID) > 0) {
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    Serial.print(F("Connecting to configured Wi-Fi"));
+    unsigned long started = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - started < WIFI_CONNECT_TIMEOUT_MS) {
+      delay(250);
+      Serial.print('.');
+    }
+    Serial.println();
+    connectedToRouter = (WiFi.status() == WL_CONNECTED);
+    if (connectedToRouter) {
+      wifiApMode = false;
+      Serial.print(F("ESP32 Wi-Fi IP: ")); Serial.println(WiFi.localIP());
+    }
+  }
+
+  if (!connectedToRouter) {
+    WiFi.mode(WIFI_AP);
+    wifiApMode = true;
+    if (WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASSWORD)) {
+      Serial.print(F("ESP32 access point: ")); Serial.println(WIFI_AP_SSID);
+      Serial.print(F("Connect PC to this Wi-Fi; TCP controller IP: "));
+      Serial.println(WiFi.softAPIP());
+    } else {
+      Serial.println(F("ERROR: ESP32 Wi-Fi AP start failed; check board/core selection."));
+    }
+  }
+
+  tcpServer.begin();
+  Serial.print(F("TCP arm server listening on port "));
+  Serial.println(TCP_PORT);
+  Serial.println(F("Protocol READY is sent after the host TCP client connects."));
+}
+
+void handleTcpDisconnect() {
+  // Stop an in-progress trajectory at the latest commanded servo state, and fail
+  // safe on the magnet. The servos remain powered/holding unless hardware is reset.
+  setMagnet(false);
+  if (moving) {
+    moving = false;
+    for (uint8_t i = 0; i < NUM_SERVOS; i++) {
+      startPos[i] = curPos[i];
+      targetPos[i] = curPos[i];
+    }
+    finishActive(true);
+  }
+  tcpClient.stop();
+  tcpSession = false;
+  rxLen = 0;
+  inFrame = false;
+  lastHostMs = millis();
+  Serial.println(F("TCP client disconnected: magnet OFF; motion stopped."));
+}
+
+void serviceWiFiClient() {
+  if (tcpSession && (!tcpClient || !tcpClient.connected())) {
+    handleTcpDisconnect();
+  }
+  if (tcpSession) return;  // one controller at a time
+
+  WiFiClient incoming = tcpServer.available();
+  if (!incoming) return;
+
+  tcpClient = incoming;
+  tcpClient.setNoDelay(true);
+  tcpSession = true;
+  rxLen = 0;
+  inFrame = false;
+  lastHostMs = millis();
+  // A fresh TCP client starts a fresh command-sequence session.
+  lastSeq = -1;
+  lastDone = true;
+  activeSeq = -1;
+  tcpClient.print(F("<READY,ARM5,1>\r\n"));
+  Serial.print(F("TCP controller connected from "));
+  Serial.println(tcpClient.remoteIP());
+}
+
+// ============================================================================
 // SAFETY
 // ============================================================================
 void checkMagnetSafety() {
-  if (!magnetOn) return;
   unsigned long now = millis();
-  if (now - lastHostMs > HOST_TIMEOUT_MS) {
+  // If a command stops arriving during an active move, halt the trajectory and
+  // turn the magnet off. Normal sorter moves are shorter than HOST_TIMEOUT_MS.
+  if ((magnetOn || (tcpSession && moving)) && now - lastHostMs > HOST_TIMEOUT_MS) {
     setMagnet(false);
-    Serial.println(F("<WARN,HOST_TIMEOUT,MAGNET_OFF>"));
-  } else if (now - magnetOnMs > MAGNET_MAX_ON_MS) {
+    if (moving) {
+      moving = false;
+      for (uint8_t i = 0; i < NUM_SERVOS; i++) {
+        startPos[i] = curPos[i];
+        targetPos[i] = curPos[i];
+      }
+      finishActive(true);
+    }
+    { Stream& out = protocolOut(); out.println(F("<WARN,HOST_TIMEOUT,MAGNET_OFF>")); }
+    if (tcpSession) {
+      tcpClient.stop();
+      tcpSession = false;
+      rxLen = 0;
+      inFrame = false;
+    }
+  }
+  if (magnetOn && now - magnetOnMs > MAGNET_MAX_ON_MS) {
     setMagnet(false);
-    Serial.println(F("<WARN,MAGNET_MAX_ON,MAGNET_OFF>"));
+    Stream& out = protocolOut();
+    out.println(F("<WARN,MAGNET_MAX_ON,MAGNET_OFF>"));
   }
 }
 
@@ -395,11 +534,12 @@ void setup() {
     writeServo(i, HOME_POSE[i]);
   }
   lastHostMs = millis();
-  Serial.println(F("<READY,ARM5MAG,2>"));
+  startWiFiNetwork();
 }
 
 void loop() {
-  readSerial();
+  serviceWiFiClient();
+  readActiveInput();
   updateMotion();
   checkMagnetSafety();
 }
