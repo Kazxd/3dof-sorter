@@ -66,3 +66,6 @@ host/runs/
 host/tests/out/
 host/calibration/
 host/models/
+
+# the trained detector is shared through git
+!host/models/best.pt

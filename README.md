@@ -85,6 +85,8 @@ Serial Monitor before running the Python tools; only one program can hold the po
 
 ## Getting a model
 
+**Quickest:** follow [TRAINING.md](TRAINING.md). It is one click in Google Colab, takes about an hour on a free GPU, and needs no photos of our own.
+
 ```bash
 set ROBOFLOW_API_KEY=your_key
 python get_model.py download
