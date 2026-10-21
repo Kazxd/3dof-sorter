@@ -20,13 +20,16 @@ ENV/
 .DS_Store
 Thumbs.db
 
-# Local environment variables
+# Local environment variables and credentials
 .env
 .env.*
 !.env.example
 
-# Logs
+# Logs and local recovery files
 *.log
+*.bak
+*.bak_*
+*~
 
 # Jupyter
 .ipynb_checkpoints/
@@ -36,12 +39,13 @@ Thumbs.db
 .coverage
 htmlcov/
 
-# YOLO / training artifacts
-# These are generated after cloning and running setup/training steps.
-runs/
+# YOLO / ML training outputs
+**/runs/
 wandb/
 mlruns/
 *.cache
+
+# Ignore model weights/exports by default; ship only the deployed detector
 *.pt
 *.weights
 *.onnx
@@ -51,21 +55,33 @@ mlruns/
 *.safetensors
 best/
 yolov8n/
+/host/models/*
+!/host/models/best.pt
 
 # Generated preview images
 class_preview/
 
-# Local datasets and downloaded data
-# Keep the project dataset in the repo if you want a fresh clone to be
-# reproducible without downloading it separately.
-datasets/
-dataset/
-data/
-# 5-DOF sorter
-host/runs/
-host/tests/out/
-host/calibration/
-host/models/*
+# Downloaded datasets: keep bulk data out of Git, but allow instructions/manifest
+/datasets/*
+!/datasets/README.md
+!/datasets/manifest.yaml
+/dataset/
+/data/
 
-# the trained detector is shared through git
-!host/models/best.pt
+# Local calibration is hardware-specific; allow a guide and example template
+/host/calibration/*
+!/host/calibration/README.md
+!/host/calibration/homography.example.json
+
+# Generated simulation and test outputs
+/host/tests/out/
+
+# One-off patch helpers (keep source tooling only if deliberately maintained)
+/apply_esp32_wifi_patch.py
+/apply_rigid_mount_patch.py
+/apply_wifi_heartbeat_patch.py
+
+# Machine-specific firmware debugging artifacts
+/firmware/arm_controller/debug.cfg
+/firmware/arm_controller/debug_custom.json
+/firmware/arm_controller/esp32.svd

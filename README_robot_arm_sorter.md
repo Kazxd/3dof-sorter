@@ -204,16 +204,34 @@ The inference weight path is `host/models/best.pt`. A trained model was present 
 
 The direct live inference preview can be tested without connecting to the arm by loading `models/best.pt` in an Ultralytics prediction script. Check washer, nut, and bolt individually, in multiple positions/orientations and under the actual lighting.
 
-### 7.2 Optional dataset workflow
+### 7.2 Dataset acquisition and retraining
 
-`host/get_model.py` documents the project's stages:
+The committed detector weights are at `host/models/best.pt`, so a fresh checkout can run inference without downloading the training images. The model is approximately 6.25 MB. Keep the weights and dataset acquisition as separate paths: users who only want to run the sorter do not need the full training corpus.
 
-```bash
-cd host
-export ROBOFLOW_API_KEY="<your-key>"  # keep this private; do not commit it
-python3 get_model.py download
-python3 get_model.py merge
-python3 get_model.py train --device 0
+#### Obtain the training datasets
+
+The repository's `train_colab.ipynb` is the current entry point for assembling the public fastener datasets. Open it in Google Colab and run the notebook from top to bottom. The notebook describes downloading 12 public datasets (approximately 17,000 top-down images), normalising the labels to `washer`, `nut`, and `bolt`, and merging them into a YOLO dataset at `datasets/merged/data.yaml`. The workflow uses Roboflow; obtain an API key from your Roboflow account when prompted. **Do not paste a personal API key into a committed notebook, Python file, README, or `.env` file.** Enter it only into the runtime's secret/input mechanism.
+
+Two versioned source exports are present in the local dataset metadata:
+
+- [yellow_silver, version 4](https://universe.roboflow.com/jingjing-huang/yellow_silver/dataset/4) — 3,641 images in its exported dataset metadata.
+- [nutsnbolts, version 5](https://universe.roboflow.com/tktk-hodc3/nutsnbolts/dataset/5) — 130 images in its exported dataset metadata.
+
+These are two identified sources, not a complete list of the 12. For an auditable rerun, preserve the exact source project and export version for every dataset in the notebook/downloader and record each source's licence and attribution. Do not substitute the latest version of a Roboflow project for a pinned export: a changed version may change both images and labels.
+
+After dataset preparation, verify that `datasets/merged/data.yaml` names the expected three classes and that train/validation/test splits exist. Its generated `path` must resolve on the current machine; do not commit a machine-specific absolute path such as `/home/<user>/...`. The `.gitignore` intentionally excludes downloaded dataset contents so that Git clones stay small. The dataset workflow, source versions, licence notes, and checksums should be documented in `datasets/README.md` and, once complete, `datasets/manifest.yaml`.
+
+#### Training configuration and reproduction status
+
+The supplied `best.pt` checkpoint metadata records Ultralytics **8.4.160**, base model `yolov8n.pt`, `imgsz=640`, `epochs=80`, `batch=16`, `seed=0`, deterministic training enabled, and validation enabled. The notebook's visible example command currently uses `--epochs 40 --batch 32`; therefore, running that cell as currently written is **not an exact reproduction of this checkpoint's training configuration**. Align the notebook/downloader's training command and all dataset versions/splits before describing a new run as an exact reproduction. Preserve the generated run arguments, results, class mapping, and dataset manifest as experiment records; generated run directories remain ignored by Git.
+
+The checkpoint's recorded public validation metrics were approximately precision 0.984, recall 0.981, mAP@50 0.993, and mAP@50–95 0.791. These are checkpoint metadata, not evidence of equivalent performance on your own camera/table. The own-camera dataset path `datasets/own/data.yaml` was absent in the recorded workspace; assess performance on a separate, labelled camera dataset before relying on live sorting.
+
+#### Adding your own camera data
+
+Record representative frames from the actual camera, label every visible washer, nut, and bolt in YOLO detection format, and split by recording session or video rather than randomly distributing adjacent near-identical frames across train and validation. That reduces leakage and gives a more meaningful estimate of performance on new scenes. Keep personal, private, or non-redistributable images out of the public repository unless their sharing terms explicitly allow it.
+
+Before redistributing the datasets or weights, review the licences/attribution for all source datasets and the applicable Ultralytics licensing terms. The presence of a public download URL does not by itself guarantee permission to republish the downloaded images.
 # Or run all stages: python3 get_model.py all --device 0
 ```
 

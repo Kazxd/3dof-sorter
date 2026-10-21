@@ -1,3 +1,6 @@
+> **Setup guide:** [Full hardware, calibration, testing, and dataset setup guide](README_robot_arm_sorter.md)
+> Includes end-to-end hardware/firmware setup, camera calibration, tests, and YOLO dataset acquisition.
+
 # Vision-guided 5-DOF electromagnetic fastener sorter
 
 A phone camera looks down at a mat. The PC finds washers, nuts and bolts, works out
