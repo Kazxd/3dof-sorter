@@ -16,12 +16,26 @@ three classes in Roboflow or CVAT, export "YOLOv8", unzip into ../datasets/own/
 (it must contain data.yaml). merge picks it up automatically and repeats it
 OWN_REPEAT times in the training split so the model learns your setup first.
 
-Datasets used (CC BY 4.0, check each page for the latest version number):
-  jingjing-huang/yellow_silver   ~1.4k top-down images with ArUco markers;
-                                 classes {silver, yellow} x {bolt, nut, washer}
-  tktk-hodc3/nutsnbolts          50 images, classes nut / bolt / washer
-Search https://universe.roboflow.com for "class:washer class:nut class:bolt"
-to add more; anything whose class names contain washer / nut / bolt / screw merges.
+Datasets (all checked by hand for a top-down view of loose parts on a plain surface,
+which is what our camera sees; licences are CC BY 4.0 unless noted):
+  Roboflow Universe                                  images  classes kept
+  new-workspace-jdteu/0428parts                       3,711  nut, bolt, washer (dark mat, many parts)
+  abdalrahman-gamal/mechanical-parts-detection-glf33  5,237  nut, bolt, washer (grey background)
+  ecen250finalproject/hardware-g8ena                  1,379  hex nut, hex/carriage bolt, washers
+  jingjing-huang/yellow_silver                        1,401  bolt, nut, washer (conveyor, ArUco)
+  jingjing-huang/red_silver                             934  bolt, nut, washer
+  bolts/bolts-final                                     872  bolt, nut, screw->bolt, washer
+  ecen289project/final-frpi8                            700  hex nut, hex/carriage bolt, washers
+  vidhu-mathur-e3zu3/nutcrackers                        206  bolt, nut, washer
+  yamaha-50qun/nuts-bolts-detection                     177  nut, bolts, washer (white paper)
+  tktk-hodc3/nutsnbolts                                  50  nut, bolt, washer
+  mazhar-cakir/mechanical-parts (CC BY-NC-SA)         2,250  nut, bolt
+  Hugging Face
+  quailrobot/fasteners-v1-sample (CC BY-NC-SA)          300  synthetic: hex bolt/nut, washers, screws
+Non-commercial (NC) licences are fine for university research; cite the authors.
+Each source's newest version is used unless SOURCES pins one. MAX_TRAIN_PER_SOURCE stops
+one big dataset from drowning out the others. Classes that aren't washer / nut / bolt /
+screw (bearings, gears, springs, numbered junk classes) are dropped automatically.
 """
 import argparse
 import os
@@ -36,9 +50,20 @@ RAW, MERGED, OWN = DATA / "raw", DATA / "merged", DATA / "own"
 MODEL_OUT = HERE / "models" / "best.pt"
 
 SOURCES = [
-    dict(name="yellow_silver", workspace="jingjing-huang", project="yellow_silver", version=4),
-    dict(name="nutsnbolts", workspace="tktk-hodc3", project="nutsnbolts", version=5),
+    dict(name="0428parts", workspace="new-workspace-jdteu", project="0428parts"),
+    dict(name="mech_parts_gamal", workspace="abdalrahman-gamal", project="mechanical-parts-detection-glf33"),
+    dict(name="ecen250_hardware", workspace="ecen250finalproject", project="hardware-g8ena"),
+    dict(name="yellow_silver", workspace="jingjing-huang", project="yellow_silver"),
+    dict(name="red_silver", workspace="jingjing-huang", project="red_silver"),
+    dict(name="bolts_final", workspace="bolts", project="bolts-final"),
+    dict(name="ecen289_final", workspace="ecen289project", project="final-frpi8"),
+    dict(name="nutcrackers", workspace="vidhu-mathur-e3zu3", project="nutcrackers"),
+    dict(name="yamaha_nuts_bolts", workspace="yamaha-50qun", project="nuts-bolts-detection"),
+    dict(name="nutsnbolts", workspace="tktk-hodc3", project="nutsnbolts"),
+    dict(name="mech_parts_cakir", workspace="mazhar-cakir", project="mechanical-parts"),
+    dict(name="quail_synthetic", kind="hf", repo="quailrobot/fasteners-v1-sample"),
 ]
+MAX_TRAIN_PER_SOURCE = 1500    # images per public dataset in the train split (None = no cap)
 OWN_REPEAT = 3
 CLASSES = ["washer", "nut", "bolt"]          # index = class id in the merged dataset
 SPLITS = {"train": "train", "valid": "valid", "val": "valid", "test": "test"}
@@ -46,28 +71,57 @@ IMG_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
 
 # =============================================================================
-def download():
-    key = os.environ.get("ROBOFLOW_API_KEY")
-    if not key:
-        sys.exit("Set ROBOFLOW_API_KEY first (free account at roboflow.com -> Settings -> API Keys).")
+def _latest_version(project):
+    """Highest version number of a Roboflow project."""
     try:
-        from roboflow import Roboflow
-    except ImportError:
-        sys.exit("pip install roboflow")
-    rf = Roboflow(api_key=key)
+        info = project.get_version_information()
+        nums = [int(str(v.get("id", "")).rsplit("/", 1)[-1]) for v in info]
+    except Exception:
+        nums = [int(str(v.version).rsplit("/", 1)[-1]) for v in project.versions()]
+    if not nums:
+        raise RuntimeError("project has no versions")
+    return max(nums)
+
+
+def download():
     RAW.mkdir(parents=True, exist_ok=True)
+    rf = None
     for s in SOURCES:
         dest = RAW / s["name"]
-        if (dest / "data.yaml").exists():
+        if dest.exists() and any(dest.rglob("data.yaml")):
             print(f"[skip] {s['name']} already downloaded")
             continue
+
+        if s.get("kind") == "hf":
+            try:
+                from huggingface_hub import snapshot_download
+            except ImportError:
+                print(f"[skip] {s['name']}: pip install huggingface_hub")
+                continue
+            try:
+                print(f"[download] {s['name']} from https://huggingface.co/datasets/{s['repo']}")
+                snapshot_download(s["repo"], repo_type="dataset", local_dir=str(dest))
+            except Exception as e:
+                print(f"[error] {s['name']}: {e}")
+            continue
+
+        if rf is None:
+            key = os.environ.get("ROBOFLOW_API_KEY")
+            if not key:
+                sys.exit("Set ROBOFLOW_API_KEY first (free account at roboflow.com -> Settings -> API Keys).")
+            try:
+                from roboflow import Roboflow
+            except ImportError:
+                sys.exit("pip install roboflow")
+            rf = Roboflow(api_key=key)
         url = f"https://universe.roboflow.com/{s['workspace']}/{s['project']}"
         try:
-            print(f"[download] {s['name']} v{s['version']} from {url}")
-            rf.workspace(s["workspace"]).project(s["project"]).version(s["version"]).download(
-                "yolov8", location=str(dest))
+            project = rf.workspace(s["workspace"]).project(s["project"])
+            version = s.get("version") or _latest_version(project)
+            print(f"[download] {s['name']} v{version} from {url}")
+            project.version(version).download("yolov8", location=str(dest))
         except Exception as e:
-            print(f"[error] {s['name']}: {e}\n        check the version number on {url} and edit SOURCES")
+            print(f"[error] {s['name']}: {e}\n        open {url} and set a version number in SOURCES")
 
 
 # =============================================================================
@@ -81,9 +135,22 @@ def read_names(yaml_path):
     return dict(enumerate(names))
 
 
+def _split_dirs(root):
+    """(split, images_dir, labels_dir) for both common layouts:
+    Roboflow     root/train/images + root/train/labels
+    Ultralytics  root/images/train + root/labels/train"""
+    out = []
+    for name in SPLITS:
+        if (root / name / "images").is_dir():
+            out.append((name, root / name / "images", root / name / "labels"))
+        elif (root / "images" / name).is_dir():
+            out.append((name, root / "images" / name, root / "labels" / name))
+    return out
+
+
 def merge():
     import vision                              # reuses the same name -> label rules as the app
-    sources = [p for p in sorted(RAW.glob("*")) if (p / "data.yaml").exists()]
+    sources = [p for p in sorted(RAW.glob("*")) if p.is_dir() and any(p.rglob("data.yaml"))]
     if (OWN / "data.yaml").exists():
         sources.append(OWN)
     if not sources:
@@ -93,7 +160,9 @@ def merge():
 
     counts = Counter()
     for src in sources:
-        names = read_names(src / "data.yaml")
+        yaml_file = src / "data.yaml" if (src / "data.yaml").exists() else next(src.rglob("data.yaml"))
+        root = yaml_file.parent
+        names = read_names(yaml_file)
         remap = {}
         for cid, name in names.items():
             label = vision.canonical_label(name)
@@ -101,19 +170,20 @@ def merge():
                 remap[cid] = CLASSES.index(label)
         print(f"[merge] {src.name}: " + ", ".join(
             f"{names[c]}->{CLASSES[remap[c]] if c in remap else 'DROP'}" for c in names))
-        repeat = OWN_REPEAT if src == OWN else 1
+        own = src == OWN
+        repeat = OWN_REPEAT if own else 1
 
-        for split_dir in src.iterdir():
-            split = SPLITS.get(split_dir.name)
-            if not split or not (split_dir / "images").is_dir():
-                continue
+        for split_name, img_dir, lbl_dir in _split_dirs(root):
+            split = SPLITS[split_name]
             out_img, out_lbl = MERGED / split / "images", MERGED / split / "labels"
             out_img.mkdir(parents=True, exist_ok=True)
             out_lbl.mkdir(parents=True, exist_ok=True)
-            for img in (split_dir / "images").iterdir():
-                if img.suffix.lower() not in IMG_EXT:
-                    continue
-                lbl = split_dir / "labels" / (img.stem + ".txt")
+            images = sorted(p for p in img_dir.iterdir() if p.suffix.lower() in IMG_EXT)
+            if split == "train" and not own and MAX_TRAIN_PER_SOURCE and len(images) > MAX_TRAIN_PER_SOURCE:
+                step = len(images) / MAX_TRAIN_PER_SOURCE          # evenly spaced, deterministic
+                images = [images[int(i * step)] for i in range(MAX_TRAIN_PER_SOURCE)]
+            for img in images:
+                lbl = lbl_dir / (img.stem + ".txt")
                 lines = []
                 if lbl.exists():
                     for line in lbl.read_text(encoding="utf-8").splitlines():

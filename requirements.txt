@@ -4,3 +4,4 @@ pyserial>=3.5
 ultralytics>=8.1          # YOLOv8; optional at runtime (HSV fallback works without it)
 roboflow>=1.1             # only for get_model.py download
 pyyaml>=6.0
+huggingface_hub>=0.20    # only for get_model.py download (synthetic fastener set)

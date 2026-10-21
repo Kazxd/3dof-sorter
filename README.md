@@ -94,11 +94,16 @@ python get_model.py train --device 0
 
 `set` is for Windows `cmd`. In PowerShell use `$env:ROBOFLOW_API_KEY="your_key"`.
 
-* **download** pulls [yellow_silver](https://universe.roboflow.com/jingjing-huang/yellow_silver)
-  (about 1.4k top-down images with ArUco markers) and
-  [nutsnbolts](https://universe.roboflow.com/tktk-hodc3/nutsnbolts) (50 images). Check each
-  page's Dataset tab for the newest version number and edit `SOURCES` if needed.
-* **merge** renames every class containing washer, nut, bolt or screw to our three labels.
+* **download** pulls 11 public Roboflow datasets and one synthetic Hugging Face set. All
+  were checked by hand for a top-down view of loose parts, about 17k images in total.
+  Highlights: [0428parts](https://universe.roboflow.com/new-workspace-jdteu/0428parts) (3.7k),
+  [mechanical parts](https://universe.roboflow.com/abdalrahman-gamal/mechanical-parts-detection-glf33) (5.2k),
+  [ECEN250 hardware](https://universe.roboflow.com/ecen250finalproject/hardware-g8ena) (1.4k) and
+  [yellow_silver](https://universe.roboflow.com/jingjing-huang/yellow_silver) (1.4k). The full
+  list with licences is at the top of `get_model.py`. It uses each dataset's newest version
+  and caps big ones at 1,500 training images, so no single source dominates.
+* **merge** renames every class containing washer, nut, bolt or screw to our three labels and
+  drops the rest (bearings, gears, numbered classes).
 * **train** fine-tunes `yolov8n.pt` and copies the result to `host/models/best.pt`.
 
 **Then add your own photos.** This matters more than anything else on the list. Run
