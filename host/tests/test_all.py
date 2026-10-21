@@ -226,6 +226,18 @@ def test_consensus_merges_and_filters():
     assert len(t) == 1 and t[0].label == "nut" and abs(t[0].x - 150.6) < 1e-6
 
 
+# ----------------------------------------------------------------- motion test tool
+def test_motion_test_runs_in_sim():
+    import motion_test
+    saved = C.RUNS_DIR
+    C.RUNS_DIR = Path(tempfile.mkdtemp()) / "runs"
+    try:
+        assert motion_test.main(["--sim", "--yes"]) == 0
+        assert list(C.RUNS_DIR.glob("motion_test_*.txt")), "report not written"
+    finally:
+        C.RUNS_DIR = saved
+
+
 # ----------------------------------------------------------------- end to end
 def test_sorter_end_to_end_sim():
     import sorter

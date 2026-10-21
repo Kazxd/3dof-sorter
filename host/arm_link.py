@@ -250,13 +250,16 @@ class ArmLink:
         self._command(["P"], reply=("PONG",))
 
     def move(self, pose6, ms, on_wait=None):
-        """Move to a 6-value pose (5 servo angles + magnet 0/1) and block until DONE."""
+        """Move to a 6-value pose (5 servo angles + magnet 0/1) and block until DONE.
+        Returns the duration the board actually used, in ms."""
         if len(pose6) != 6:
             raise ValueError("pose must have 6 values")
         fields = ["M"] + [fmt(a) for a in pose6] + [str(int(ms))]
         # the board may stretch `ms` to respect its speed limits; allow for a full-range move
-        self._command(fields, done_timeout=ms / 1000.0 + C.DONE_MARGIN_S, on_wait=on_wait)
+        ack = self._command(fields, done_timeout=ms / 1000.0 + C.DONE_MARGIN_S, on_wait=on_wait)
         self.pose = list(pose6)
+        # the board's real duration after its speed limits (None if it didn't report one)
+        return int(ack[2]) if len(ack) >= 3 and ack[2].isdigit() else None
 
     def home(self, ms=1500, on_wait=None):
         self._command(["H", str(int(ms))], done_timeout=ms / 1000.0 + C.DONE_MARGIN_S, on_wait=on_wait)
@@ -276,6 +279,9 @@ class ArmLink:
 # =============================================================================
 # simulator (no hardware)
 # =============================================================================
+SIM_SPEED_DPS = (90, 60, 75, 120, 180)     # mirrors MAX_SPEED_DPS in the firmware
+
+
 class SimArm:
     """Same interface as ArmLink; prints packets instead of sending them."""
 
@@ -315,8 +321,11 @@ class SimArm:
         if len(pose6) != 6:
             raise ValueError("pose must have 6 values")
         self._log(",".join(["M", str(self._next())] + [fmt(a) for a in pose6] + [str(int(ms))]))
-        self._sleep(ms, on_wait)
+        # same speed limits as the firmware, so the simulator reports realistic durations
+        need = max([int(1875 * abs(a - b) / v) for a, b, v in zip(pose6[:5], self.pose[:5], SIM_SPEED_DPS)] + [ms, 150])
+        self._sleep(need, on_wait)
         self.pose = list(pose6)
+        return need
 
     def home(self, ms=1500, on_wait=None):
         self._log(f"H,{self._next()},{int(ms)}")

@@ -38,8 +38,10 @@ The earlier 3-DOF vision dashboard lives on the
 | `host/calibrate_camera.py` | Click or ArUco calibration → `calibration/homography.json`. |
 | `host/hsv_tuner.py` | Sliders for the HSV fallback; shows how each blob is classified. |
 | `host/arm_console.py` | Jog servos, switch the magnet, test IK with `go x y z`. |
+| `host/motion_test.py` | Staged movement test: every joint, magnet, IK points, speed cap, repeatability. |
 | `host/tests/` | Hardware-free tests and a synthetic scene generator. |
 | `firmware/arm_controller/` | Board firmware. |
+| `firmware/servo_test/` | Standalone first power-up sketch: drive servos from the Serial Monitor. |
 | `cad/` | Printable electromagnet housing: STLs, parametric OpenSCAD source, assembly guide. |
 
 ## Hardware and wiring
@@ -152,6 +154,22 @@ Without `best.pt` the sorter still runs on the HSV fallback alone.
 
 11. **Dry run.** `python sorter.py --sim`, then `python sorter.py`. Keep a hand near the
     power switch for the first runs.
+
+## Testing the arm's movement
+
+Two programs, used in this order on a newly built arm:
+
+1. **`firmware/servo_test/servo_test.ino`**: flash it, open the Serial Monitor at 115200
+   ("Newline"), and drive one servo at a time. `0`–`4` selects a servo, `+` / `-` steps it,
+   `w` sweeps it, `h` centres everything, `m` pulses the magnet, `o` switches all outputs off.
+   Every servo stays limp until you command it. Use it to fit the horns, check wiring and
+   note each joint's zero and safe limits.
+2. **`host/motion_test.py`**: flash `arm_controller.ino` again, then run
+   `python motion_test.py`. It walks through link → home → each joint → magnet → IK points
+   → speed cap → repeatability → park. It asks you to confirm what you see at each stage,
+   tells you which `config.py` value to change when something is off, and saves a report to
+   `runs/`. Useful options: `--sim` (no hardware), `--stages joints,ik`, `--amp 10`
+   (smaller swings). Ctrl+C stops the arm and brings it home slowly.
 
 ## Running
 
