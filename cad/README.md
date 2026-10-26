@@ -144,7 +144,7 @@ edge). It swings freely, so gravity keeps the magnet face pointing down.
 * If your measurements differ (wall thickness, width, hole size), change the numbers at the
   top of `magnet_hanger.scad` and re-export.
 
-**Stiff-plastic option (PLA or PETG): `stl/magnet_hanger_pla_petg.stl`.** Plain 4.5 mm pegs that go
+**Stiff-plastic option (PLA or PETG): `stl/magnet_hanger_petg.stl` (the final version).** Plain 4.5 mm pegs that go
 5 mm into the holes, with no barbs: the stiff arms keep the pegs in, because the magnet only
 pulls straight down. Fitting needs about 6 mm of bend per arm, which is safe even for PLA if you
 do one arm at a time. PLA softens around 55 °C, so it is fine for testing (the firmware cuts the
