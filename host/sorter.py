@@ -310,7 +310,10 @@ class Sorter:
             except K.Unreachable:
                 return K.solve(x, y, z)
 
-        touch = K.solve(t.x, t.y, top - C.PRESS_DEPTH)  # slightly below: the housing spring compresses
+        # Contact pose: the magnet face must point down within TOOL_PITCH_TOLERANCE_DEG, or the
+        # part is skipped. Passing the pitches explicitly makes the solver enforce that limit
+        # (a rigid magnet otherwise accepts any tilt the shoulder/elbow happen to give).
+        touch = K.solve(t.x, t.y, top - C.PRESS_DEPTH, pitches=C.PITCH_CANDIDATES)
         hover = at(t.x, t.y, top + C.APPROACH_HEIGHT, touch.pitch)
         lift = at(t.x, t.y, top + C.LIFT_HEIGHT, touch.pitch)
         bx, by, bz = C.BINS[t.label]

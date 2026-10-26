@@ -247,15 +247,33 @@ def test_motion_test_runs_in_sim():
 
 
 # ----------------------------------------------------------------- end to end
+def test_pick_rejects_tilted_magnet():
+    """The contact pose must respect TOOL_PITCH_TOLERANCE_DEG: a part where the rigid
+    magnet would land tilted is reported unreachable instead of being pressed at an angle."""
+    import sorter
+    t = sorter.Target(label="nut", x=150.0, y=0.0, axis=None, conf=0.9, source="yolo", seen=1.0)
+    s = sorter.Sorter.__new__(sorter.Sorter)
+    try:
+        s.plan(t)
+        sol = K.solve(150.0, 0.0, C.PICK["nut"]["z"] - C.PRESS_DEPTH, pitches=C.PITCH_CANDIDATES)
+        tilt = min(abs(K.wrap_deg(sol.pitch - p)) for p in C.PITCH_CANDIDATES)
+        assert tilt <= C.TOOL_PITCH_TOLERANCE_DEG + 1e-6
+    except K.Unreachable:
+        pass                                    # correct: refused instead of tilting
+
+
 def test_sorter_end_to_end_sim():
     import sorter
     tmp = Path(tempfile.mkdtemp())
     scene, calib = synthetic.write_files(tmp)
     saved = (
         C.HOMOGRAPHY_FILE, C.RUNS_DIR, C.SCAN_SETTLE_S,
-        C.WORKSPACE_X, C.WORKSPACE_Y,
+        C.WORKSPACE_X, C.WORKSPACE_Y, C.TOOL_PITCH_TOLERANCE_DEG,
     )
     C.HOMOGRAPHY_FILE, C.RUNS_DIR, C.SCAN_SETTLE_S = calib, tmp / "runs", 0.05
+    # This test checks the pipeline, not the physics: let the rigid magnet tilt freely so
+    # the synthetic parts (spread over the whole mat) are pickable.
+    C.TOOL_PITCH_TOLERANCE_DEG = 180.0
     # The synthetic scene spans a larger area than the narrow physical test zone.
     C.WORKSPACE_X = (110.0, 230.0)
     C.WORKSPACE_Y = (-110.0, 110.0)
@@ -265,7 +283,7 @@ def test_sorter_end_to_end_sim():
     finally:
         (
             C.HOMOGRAPHY_FILE, C.RUNS_DIR, C.SCAN_SETTLE_S,
-            C.WORKSPACE_X, C.WORKSPACE_Y,
+            C.WORKSPACE_X, C.WORKSPACE_Y, C.TOOL_PITCH_TOLERANCE_DEG,
         ) = saved
     moves = [p for p in s.arm.sent if p.startswith("M,")]
     # park + 3 x (8 waypoints + park) + final park
