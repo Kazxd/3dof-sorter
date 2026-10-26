@@ -50,7 +50,7 @@ arm_t       = style == "tpu" ? 5.0 : 3.5;   // TPU thicker to sway less; PLA/PET
 depth       = style == "tpu" ? 12.0 : 10.0; // hanger thickness along the forearm
 top_above   = 6.0;    // hanger arm continues this far above the pivot
 
-peg_d       = 4.0;            // spins freely in a melted Ø6 hole (3.5 also exported)
+peg_d       = 4.0;            // spins freely in a melted Ø6 hole 
 peg_play    = 0.5;            // axial play so it swings without binding
 barb_len    = style == "tpu" ? 2.5 : 0;    // rigid: no barb, the stiff arms keep the pegs in
 barb_d      = hole_d + 2.0;   // 8 mm: TPU squeezes through Ø6 and springs open behind the wall
@@ -75,7 +75,7 @@ module teardrop(d) {
 
 // One peg: shaft + barb, built along +X from the origin.
 module peg() {
-  rotate([0, 90, 0]) rotate([0, 0, 90]) {
+  rotate([0, 90, 0]) {   // teardrop point -> along the arm (-Y), i.e. down to the bed when printed
     if (barb_len > 0) {
       linear_extrude(shaft_len) teardrop(peg_d);
       translate([0, 0, shaft_len])
