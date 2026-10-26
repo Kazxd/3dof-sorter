@@ -126,3 +126,20 @@ Never drive the coil straight from a pin, and never leave out the diode.
   parts first (`ISOLATION_MM`).
 * **Residual magnetism** can hold a light washer for a moment after switch-off. The sorter
   waits `RELEASE_DWELL_MS` over the bin before moving away.
+
+## Swinging hanger for the 3-joint arm (`magnet_hanger.scad`)
+
+The arm on the bench has no wrist servo, so a magnet bolted to the forearm tilts with it.
+`stl/magnet_hanger.stl` is a U-shaped PETG hanger that hooks into two Ø6 mm holes drilled
+straight across the forearm end (17.5 mm up from its bottom edge, 17.5 mm back from its front
+edge). It swings freely, so gravity keeps the magnet face pointing down.
+
+* Print `stl/magnet_peg_test.stl` first (2 minutes) and try it in a drilled hole. The peg
+  should turn freely, and the barb should click through the 6 mm wall.
+* Print the hanger flat as exported, in PETG, with no supports.
+* Fit it by pushing one peg in, spreading the other arm slightly and clicking its peg in.
+* Fix the magnet under the bottom bar with an M3 screw and washer (the hole also passes M4).
+* Pivot to magnet face is 61 mm. After fitting, set `TOOL_SELF_LEVELING = True` and
+  `TOOL_DOWN = 61.0` in `host/config.py`, and set `L3` to the elbow axis → drilled hole distance.
+* If your measurements differ (wall thickness, width, hole size), change the numbers at the
+  top of `magnet_hanger.scad` and re-export.
