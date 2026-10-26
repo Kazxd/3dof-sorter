@@ -70,6 +70,7 @@
 #define REQUIRE_CHECKSUM    0       // 1 = reject packets without *CS (the PC always sends one)
 #define UPDATE_INTERVAL_MS  10      // servo update period while moving
 #define MIN_MOVE_MS         150
+#define START_STAGGER_MS    700     // gap between waking each servo at power-up
 #define PCA9685_ADDR        0x40
 #define SERVO_FREQ_HZ       50
 #define PCA_OSC_HZ          27000000UL   // trim 25-27 MHz if pulses measure off on a scope
@@ -528,10 +529,18 @@ void setup() {
   delay(10);
 
   // Servos jump to HOME on power-up because their real position is unknown.
-  // Park the arm near HOME by hand before switching the servo supply on.
+  // To keep that jump gentle: switch the SERVO supply on first (servos stay limp
+  // with no signal), hold the arm near HOME, then reset the ESP32 (EN button).
+  // The servos then wake one at a time instead of all slamming together.
   for (uint8_t i = 0; i < NUM_SERVOS; i++) {
     curPos[i] = startPos[i] = targetPos[i] = HOME_POSE[i];
-    writeServo(i, HOME_POSE[i]);
+    pwm.setPWM(CHANNEL[i], 0, 4096);       // all outputs off (limp) to start
+    written[i] = -1;
+  }
+  const uint8_t WAKE_ORDER[NUM_SERVOS] = {0, 2, 1, 3, 4};   // base, elbow, shoulder, (wrist slots)
+  for (uint8_t k = 0; k < NUM_SERVOS; k++) {
+    writeServo(WAKE_ORDER[k], HOME_POSE[WAKE_ORDER[k]]);
+    if (WAKE_ORDER[k] < ACTIVE_SERVOS) delay(START_STAGGER_MS);
   }
   lastHostMs = millis();
   startWiFiNetwork();
