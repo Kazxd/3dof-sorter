@@ -130,16 +130,16 @@ Never drive the coil straight from a pin, and never leave out the diode.
 ## Swinging hanger for the 3-joint arm (`magnet_hanger.scad`)
 
 The arm on the bench has no wrist servo, so a magnet bolted to the forearm tilts with it.
-`stl/magnet_hanger.stl` is a U-shaped PETG hanger that hooks into two Ø6 mm holes drilled
+`stl/magnet_hanger.stl` is a U-shaped TPU hanger that hooks into two Ø6 mm holes drilled
 straight across the forearm end (17.5 mm up from its bottom edge, 17.5 mm back from its front
 edge). It swings freely, so gravity keeps the magnet face pointing down.
 
 * Print `stl/magnet_peg_test.stl` first (2 minutes) and try it in a drilled hole. The peg
   should turn freely, and the barb should click through the wall (modelled as 8 mm; the measured wall is about 7 mm, so expect ~1 mm of side play).
-* Print the hanger flat as exported, in PETG, with no supports.
-* Fit it by pushing one peg in, spreading the other arm slightly and clicking its peg in.
+* Print the hanger flat as exported, in TPU 95A, with no supports, slowly (20-25 mm/s).
+* Fit it by pulling one arm outward and pushing its peg in until the barb pops through, then the other side. The 4.5 mm pegs spin freely in the 6 mm holes.
 * Fix the magnet under the bottom bar with an M3 screw and washer (the hole also passes M4).
-* Pivot to magnet face is 61 mm. After fitting, set `TOOL_SELF_LEVELING = True` and
-  `TOOL_DOWN = 61.0` in `host/config.py`, and set `L3` to the elbow axis → drilled hole distance.
+* Pivot to magnet face is 62 mm. After fitting, set `TOOL_SELF_LEVELING = True` and
+  `TOOL_DOWN = 62.0` in `host/config.py`, and set `L3` to the elbow axis → drilled hole distance.
 * If your measurements differ (wall thickness, width, hole size), change the numbers at the
   top of `magnet_hanger.scad` and re-export.

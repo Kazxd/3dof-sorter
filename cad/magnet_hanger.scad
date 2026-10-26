@@ -14,13 +14,14 @@
 //                                                |_____[o]_____|  <- screw into magnet
 //                                                    [magnet]
 //
-// Print: PETG, lying flat exactly as exported (no supports). 0.2 mm layers,
-// 4 walls, 60 % infill. Pegs use a teardrop profile so they print without support;
-// the hanger hangs on the round top of the peg, so the point never touches the hole.
+// Print: TPU (95A), lying flat exactly as exported (no supports). 0.2 mm layers,
+// 3 walls, 40 % infill, slow (20-25 mm/s), retraction off or very short.
+// Pegs use a teardrop profile so they print without support; the hanger hangs on
+// the round top of the peg, so the point never touches the hole.
 //
-// Fit: slide one peg into its hole, then spread the other arm a little and push
-// its peg in until the barb clicks through the wall into the hollow. The split
-// barb squeezes through the Ø6 hole and opens up again inside.
+// Fit: TPU is flexible, so just pull one arm outward, push its peg into the hole until
+// the barb pops through the wall into the hollow, then do the other side. The barb is
+// solid and oversized: TPU squeezes through the hole and springs back open inside.
 
 part = "hanger";      // hanger | peg_test | assembly
 $fn = 72;
@@ -40,17 +41,17 @@ screw_d     = 4.4;    // passes M3 (use a washer) and M4
 // ---- hanger ------------------------------------------------------------------------
 side_gap    = 0.75;   // clearance between each hanger arm and the forearm side face
 drop        = 40.0;   // pivot centre -> top of the bottom bar (swing clearance, >= 35)
-bar_t       = 6.0;    // bottom bar thickness
-arm_t       = 3.5;    // hanger arm thickness (thin enough to spread for fitting)
-depth       = 10.0;   // hanger thickness along the forearm
+bar_t       = 7.0;    // bottom bar thickness (TPU: stiffer under the magnet)
+arm_t       = 5.0;    // TPU: thicker arms so the hanger sways less
+depth       = 12.0;   // hanger thickness along the forearm (TPU: wider = steadier)
 top_above   = 6.0;    // hanger arm continues this far above the pivot
 
-peg_d       = hole_d - 0.4;   // turns freely in the hole
+peg_d       = 4.5;            // ~20 % thinner than before: spins freely in a melted Ø6 hole
 peg_play    = 0.5;            // axial play so it swings without binding
-barb_len    = 2.0;
-barb_d      = hole_d + 1.0;   // 1 mm bigger than the hole: it can't pull back out
-barb_tip_d  = hole_d - 1.4;   // pointed tip so it can be pushed through
-split_w     = 1.2;            // slot that lets the barb squeeze through the hole
+barb_len    = 2.5;
+barb_d      = hole_d + 2.0;   // 8 mm: TPU squeezes through Ø6 and springs open behind the wall
+barb_tip_d  = 4.0;            // pointed tip so it starts into the hole easily
+split_w     = 0;              // no split: TPU flexes enough, and a solid barb holds better
 split_len   = barb_len + 3.0;
 
 inner = arm_width + 2 * side_gap;                 // gap between the two hanger arms
@@ -76,7 +77,7 @@ module peg() {
 }
 
 module peg_with_split() {
-  difference() {
+  if (split_w <= 0) peg(); else difference() {
     peg();
     // vertical slot (in print orientation) through the barb end
     translate([shaft_len + barb_len - split_len, -split_w / 2, -barb_d])
