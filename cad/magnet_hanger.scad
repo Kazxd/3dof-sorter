@@ -37,6 +37,9 @@ pivot_back  = 17.5;   // hole centre back from the arm's front edge    [measured
 mag_d       = 20.0;
 mag_h       = 15.0;
 screw_d     = 4.4;    // passes M3 (use a washer) and M4
+screw_len   = 10.0;   // the screw you have, total length under the head
+screw_floor = 4.0;    // plastic left under the screw head (rest of the bar is recessed)
+head_recess_d = 9.0;  // room for the screw head + a small washer
 
 // ---- hanger ------------------------------------------------------------------------
 side_gap    = 0.75;   // clearance between each hanger arm and the forearm side face
@@ -107,6 +110,8 @@ module hanger_use() {
     }
     // screw hole into the magnet (vertical in use)
     translate([0, 0, bar_top - bar_t - 1]) cylinder(d = screw_d, h = bar_t + 2);
+    // recess from the top so a short screw still reaches the magnet thread
+    translate([0, 0, bar_top - bar_t + screw_floor]) cylinder(d = head_recess_d, h = bar_t);
   }
   // pegs pointing inward from each arm
   translate([-inner / 2, 0, 0]) peg_with_split();
@@ -139,5 +144,6 @@ else if (part == "peg_test") peg_test();
 else if (part == "assembly") assembly();
 
 echo(str("Pivot -> magnet face = ", drop + bar_t + mag_h, " mm  (use as TOOL_DOWN)"));
+echo(str("Screw: ", screw_len, " mm long, ", screw_floor, " mm through plastic -> ", screw_len - screw_floor - 0.6, " mm into the magnet (with a 0.6 mm washer)"));
 echo(str("Hanger outside width = ", outer, " mm, inside gap = ", inner, " mm"));
 echo(str("Peg shaft = ", shaft_len, " mm, barb Ø", barb_d, " -> Ø", barb_tip_d));
