@@ -135,7 +135,7 @@ straight across the forearm end (17.5 mm up from its bottom edge, 17.5 mm back f
 edge). It swings freely, so gravity keeps the magnet face pointing down.
 
 * Print `stl/magnet_peg_test.stl` first (2 minutes) and try it in a drilled hole. The peg
-  should turn freely, and the barb should click through the 6 mm wall.
+  should turn freely, and the barb should click through the wall (modelled as 8 mm; the measured wall is about 7 mm, so expect ~1 mm of side play).
 * Print the hanger flat as exported, in PETG, with no supports.
 * Fit it by pushing one peg in, spreading the other arm slightly and clicking its peg in.
 * Fix the magnet under the bottom bar with an M3 screw and washer (the hole also passes M4).

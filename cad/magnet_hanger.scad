@@ -27,7 +27,7 @@ $fn = 72;
 
 // ---- forearm end (measured, ±1-2 mm) -------------------------------------------
 arm_width   = 27.0;   // across the arm, side face to side face        [measured]
-wall        = 6.0;    // side-wall thickness before the hollow inside  [measured]
+wall        = 8.0;    // side-wall thickness before the hollow inside  [measured ~7, +1 margin]
 hole_d      = 6.0;    // drill size                                    [measured]
 pivot_up    = 17.5;   // hole centre above the arm's bottom edge       [measured]
 pivot_back  = 17.5;   // hole centre back from the arm's front edge    [measured]
