@@ -43,7 +43,7 @@ screw_floor = 4.0;    // plastic left under the screw head (rest of the bar is r
 head_recess_d = 9.0;  // room for the screw head + a small washer
 
 // ---- hanger ------------------------------------------------------------------------
-side_gap    = 0.75;   // clearance between each hanger arm and the forearm side face
+side_gap    = 1.5;    // clearance each side: 30 mm between the arms for a 27 mm forearm (±1-2 mm measured)
 drop        = 40.0;   // pivot centre -> top of the bottom bar (swing clearance, >= 35)
 bar_t       = style == "tpu" ? 7.0 : 6.0;   // bottom bar thickness
 arm_t       = style == "tpu" ? 5.0 : 3.5;   // TPU thicker to sway less; PLA/PETG thinner to bend for fitting
