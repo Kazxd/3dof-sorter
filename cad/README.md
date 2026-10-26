@@ -143,3 +143,10 @@ edge). It swings freely, so gravity keeps the magnet face pointing down.
   `TOOL_DOWN = 62.0` in `host/config.py`, and set `L3` to the elbow axis → drilled hole distance.
 * If your measurements differ (wall thickness, width, hole size), change the numbers at the
   top of `magnet_hanger.scad` and re-export.
+
+**Stiff-plastic option (PLA or PETG): `stl/magnet_hanger_pla_petg.stl`.** Plain 4.5 mm pegs that go
+5 mm into the holes, with no barbs: the stiff arms keep the pegs in, because the magnet only
+pulls straight down. Fitting needs about 6 mm of bend per arm, which is safe even for PLA if you
+do one arm at a time. PLA softens around 55 °C, so it is fine for testing (the firmware cuts the
+magnet after 30 s on); reprint in PETG for long runs. Pivot to magnet face is 61 mm (`TOOL_DOWN = 61.0`).
+The TPU barbed version (`stl/magnet_hanger.stl`, 62 mm) is still there.

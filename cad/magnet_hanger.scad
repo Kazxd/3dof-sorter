@@ -24,6 +24,7 @@
 // solid and oversized: TPU squeezes through the hole and springs back open inside.
 
 part = "hanger";      // hanger | peg_test | assembly
+style = "tpu";        // tpu = barbed snap pegs | rigid = PLA/PETG, short plain pegs, no barbs
 $fn = 72;
 
 // ---- forearm end (measured, ±1-2 mm) -------------------------------------------
@@ -44,14 +45,14 @@ head_recess_d = 9.0;  // room for the screw head + a small washer
 // ---- hanger ------------------------------------------------------------------------
 side_gap    = 0.75;   // clearance between each hanger arm and the forearm side face
 drop        = 40.0;   // pivot centre -> top of the bottom bar (swing clearance, >= 35)
-bar_t       = 7.0;    // bottom bar thickness (TPU: stiffer under the magnet)
-arm_t       = 5.0;    // TPU: thicker arms so the hanger sways less
-depth       = 12.0;   // hanger thickness along the forearm (TPU: wider = steadier)
+bar_t       = style == "tpu" ? 7.0 : 6.0;   // bottom bar thickness
+arm_t       = style == "tpu" ? 5.0 : 3.5;   // TPU thicker to sway less; PLA/PETG thinner to bend for fitting
+depth       = style == "tpu" ? 12.0 : 10.0; // hanger thickness along the forearm
 top_above   = 6.0;    // hanger arm continues this far above the pivot
 
 peg_d       = 4.5;            // ~20 % thinner than before: spins freely in a melted Ø6 hole
 peg_play    = 0.5;            // axial play so it swings without binding
-barb_len    = 2.5;
+barb_len    = style == "tpu" ? 2.5 : 0;    // rigid: no barb, the stiff arms keep the pegs in
 barb_d      = hole_d + 2.0;   // 8 mm: TPU squeezes through Ø6 and springs open behind the wall
 barb_tip_d  = 4.0;            // pointed tip so it starts into the hole easily
 split_w     = 0;              // no split: TPU flexes enough, and a solid barb holds better
@@ -59,7 +60,9 @@ split_len   = barb_len + 3.0;
 
 inner = arm_width + 2 * side_gap;                 // gap between the two hanger arms
 outer = inner + 2 * arm_t;
-shaft_len = side_gap + wall + peg_play;          // arm face -> inner side of the wall
+peg_engage = 5.0;                                 // rigid: how far a plain peg goes into the ~7 mm wall
+shaft_len = style == "tpu" ? side_gap + wall + peg_play   // TPU: through the wall to the barb
+                            : side_gap + peg_engage;     // rigid: part way into the hole
 
 // 2D teardrop pointing toward -Y (print bed after the export rotation)
 module teardrop(d) {
@@ -73,9 +76,15 @@ module teardrop(d) {
 // One peg: shaft + barb, built along +X from the origin.
 module peg() {
   rotate([0, 90, 0]) rotate([0, 0, 90]) {
-    linear_extrude(shaft_len) teardrop(peg_d);
-    translate([0, 0, shaft_len])
-      linear_extrude(barb_len, scale = barb_tip_d / barb_d) teardrop(barb_d);
+    if (barb_len > 0) {
+      linear_extrude(shaft_len) teardrop(peg_d);
+      translate([0, 0, shaft_len])
+        linear_extrude(barb_len, scale = barb_tip_d / barb_d) teardrop(barb_d);
+    } else {                                     // plain peg with a 0.8 mm lead-in chamfer
+      linear_extrude(shaft_len - 0.8) teardrop(peg_d);
+      translate([0, 0, shaft_len - 0.8])
+        linear_extrude(0.8, scale = (peg_d - 1.2) / peg_d) teardrop(peg_d);
+    }
   }
 }
 
