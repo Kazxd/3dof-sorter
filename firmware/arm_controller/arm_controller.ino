@@ -63,7 +63,7 @@
 #define NUM_SERVOS          5       // protocol compatibility: base, shoulder, elbow, two inactive slots
 #define ACTIVE_SERVOS       3       // only base, shoulder and elbow receive PWM
 #define NUM_VALUES          6       // 5 angles + magnet state in every move packet
-#define MAGNET_PIN        25      // ESP32 GPIO25; MOSFET gate driver only
+#define MAGNET_PIN        18      // ESP32 GPIO18 (D18, left pin row): MOSFET module TRIG
 #define MAGNET_ACTIVE_HIGH  1       // 0 if your switch module turns on with a LOW input
 #define MAGNET_MAX_ON_MS    30000UL // safety: coil off after this long on (it runs warm)
 #define HOST_TIMEOUT_MS     5000UL  // safety: coil off if the PC goes silent this long

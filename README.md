@@ -55,7 +55,7 @@ The earlier 3-DOF vision dashboard lives on the
 | PCA9685 SDA / SCL | Nano A4 / A5, or ESP32 GPIO21 / GPIO22 |
 | PCA9685 V+ (screw terminal) | **Separate 5–6 V servo supply, at least 5 A** |
 | PCA9685 ch 15, 14, 13, 12, 11 | base, shoulder, elbow, wrist pitch, wrist roll (as wired on our arm) |
-| MOSFET gate (via 220 Ω, 10 kΩ to GND) | Nano D7, or ESP32 GPIO25 |
+| MOSFET gate (via 220 Ω, 10 kΩ to GND) | Nano D7, or ESP32 GPIO18 (D18) |
 | MOSFET drain / +12 V | Magnet leads, with a 1N4007 / 1N5819 diode across them (stripe to +12 V) |
 
 Join every ground: servo supply, 12 V supply and the board. Add a 1000 µF capacitor

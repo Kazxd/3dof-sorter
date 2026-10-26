@@ -61,7 +61,7 @@ Use a separate 5–6 V servo supply sized for the actual servo stall current (th
 
 ### 3.2 Electromagnet driver
 
-The firmware uses ESP32 GPIO 25 as a logic output for a suitable MOSFET driver. Never drive a coil directly from an ESP32 pin. Use a correctly rated logic-level MOSFET/module, gate resistor and pull-down as required, and a flyback diode across the coil (diode cathode/stripe toward the positive supply). The 12 V magnet supply is separate from the servo supply. Verify that the driver is wired for the configured active-high/active-low behaviour before connecting coil power.
+The firmware uses ESP32 GPIO 18 (D18, on the left pin row) as a logic output for a suitable MOSFET driver. Never drive a coil directly from an ESP32 pin. Use a correctly rated logic-level MOSFET/module, gate resistor and pull-down as required, and a flyback diode across the coil (diode cathode/stripe toward the positive supply). The 12 V magnet supply is separate from the servo supply. Verify that the driver is wired for the configured active-high/active-low behaviour before connecting coil power.
 
 Do not perform magnet tests while diagnosing IK or camera mapping. First validate positioning with the magnet power disconnected.
 
