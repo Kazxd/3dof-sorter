@@ -76,10 +76,11 @@
 #define PCA_OSC_HZ          27000000UL   // trim 25-27 MHz if pulses measure off on a scope
 
 const uint8_t  CHANNEL[NUM_SERVOS]         = {15, 14, 13, 12, 11};
-// Pulse widths at 0 deg and at SERVO_RANGE_DEG. Provisional 1000-2000 us range
-// matches the user's first bench-test range (~205-410 PCA9685 ticks at 50 Hz).
-const uint16_t PULSE_MIN_US[NUM_SERVOS]    = {1000, 1000, 1000, 1000, 1000};
-const uint16_t PULSE_MAX_US[NUM_SERVOS]    = {2000, 2000, 2000, 2000, 2000};
+// Pulse widths at 0 deg and at SERVO_RANGE_DEG. Full MG996R range: 500-2500 us is
+// ~180 deg, so a command of N servo degrees is roughly N real degrees. (The earlier
+// 1000-2000 us bench range only gave about half the travel.)
+const uint16_t PULSE_MIN_US[NUM_SERVOS]    = {500, 500, 500, 500, 500};
+const uint16_t PULSE_MAX_US[NUM_SERVOS]    = {2500, 2500, 2500, 2500, 2500};
 const float    SERVO_RANGE_DEG[NUM_SERVOS] = {180, 180, 180, 180, 180};
 // Hard limits in servo degrees: keep in sync with JOINTS min/max in host/config.py.
 const float    LIMIT_MIN[NUM_SERVOS]       = {5, 10, 10, 10, 10};

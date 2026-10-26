@@ -42,8 +42,8 @@
 #define STEP_DELAY_MS  15          // ms per degree: ~65 deg/s, gentle
 
 const uint8_t  CHANNEL[NUM_SERVOS]      = {15, 14, 13, 12, 11};   // as wired on our arm
-const uint16_t PULSE_MIN_US[NUM_SERVOS] = {1000, 1000, 1000, 1000, 1000};   // bench-tested range
-const uint16_t PULSE_MAX_US[NUM_SERVOS] = {2000, 2000, 2000, 2000, 2000};
+const uint16_t PULSE_MIN_US[NUM_SERVOS] = {500, 500, 500, 500, 500};      // full MG996R range
+const uint16_t PULSE_MAX_US[NUM_SERVOS] = {2500, 2500, 2500, 2500, 2500};
 const char*    NAMES[NUM_SERVOS]        = {"base", "shoulder", "elbow", "wrist pitch", "wrist roll"};
 
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(0x40);
