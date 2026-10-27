@@ -267,6 +267,11 @@ def test_motion_test_runs_in_sim():
         C.RUNS_DIR = saved
 
 
+def test_demo_runs_in_sim():
+    import demo
+    assert demo.main(["--sim", "--no-camera", "--sim-speed", "200"]) == 0
+
+
 # ----------------------------------------------------------------- end to end
 def test_pick_rejects_tilted_magnet():
     """The contact pose must respect TOOL_PITCH_TOLERANCE_DEG: a part where the rigid
