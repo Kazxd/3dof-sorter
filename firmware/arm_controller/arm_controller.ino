@@ -65,7 +65,8 @@
 #define NUM_VALUES          6       // 5 angles + magnet state in every move packet
 #define MAGNET_PIN        18      // ESP32 GPIO18 (D18, left pin row): MOSFET module TRIG
 #define MAGNET_ACTIVE_HIGH  1       // 0 if your switch module turns on with a LOW input
-#define MAGNET_MAX_ON_MS    30000UL // safety: coil off after this long on (it runs warm)
+#define MAGNET_AUTO_OFF     0       // 1 = the two cut-offs below switch the coil off; 0 = only the PC does
+#define MAGNET_MAX_ON_MS    30000UL // coil off after this long on (only with MAGNET_AUTO_OFF 1)
 #define HOST_TIMEOUT_MS     5000UL  // safety: coil off if the PC goes silent this long
 #define REQUIRE_CHECKSUM    0       // 1 = reject packets without *CS (the PC always sends one)
 #define UPDATE_INTERVAL_MS  10      // servo update period while moving
@@ -492,8 +493,8 @@ void checkMagnetSafety() {
   unsigned long now = millis();
   // If a command stops arriving during an active move, halt the trajectory and
   // turn the magnet off. Normal sorter moves are shorter than HOST_TIMEOUT_MS.
-  if ((magnetOn || (tcpSession && moving)) && now - lastHostMs > HOST_TIMEOUT_MS) {
-    setMagnet(false);
+  if (((MAGNET_AUTO_OFF && magnetOn) || (tcpSession && moving)) && now - lastHostMs > HOST_TIMEOUT_MS) {
+    if (MAGNET_AUTO_OFF) setMagnet(false);
     if (moving) {
       moving = false;
       for (uint8_t i = 0; i < NUM_SERVOS; i++) {
@@ -510,7 +511,7 @@ void checkMagnetSafety() {
       inFrame = false;
     }
   }
-  if (magnetOn && now - magnetOnMs > MAGNET_MAX_ON_MS) {
+  if (MAGNET_AUTO_OFF && magnetOn && now - magnetOnMs > MAGNET_MAX_ON_MS) {
     setMagnet(false);
     Stream& out = protocolOut();
     out.println(F("<WARN,MAGNET_MAX_ON,MAGNET_OFF>"));

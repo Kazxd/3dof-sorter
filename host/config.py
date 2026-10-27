@@ -185,9 +185,9 @@ PICK = {
     "nut":    dict(z=5.0),     # M6 nut height
     "bolt":   dict(z=6.0),     # M6 bolt lying flat: shank diameter
 }
-PRESS_DEPTH = 3.0          # go this far below the part's top; the housing spring takes it up
+PRESS_DEPTH = 1.0          # just kiss the part: a deeper press tilts the hanging magnet off it
                            # so the face always seats flat, even with a few mm of arm error
-MAGNET_SETTLE_MS = 250     # magnet on, wait before lifting (coil current takes time to build)
+MAGNET_SETTLE_MS = 700     # magnet on, wait before lifting (coil current takes time to build)
 RELEASE_DWELL_MS = 400     # magnet off over the bin, wait before moving (residual magnetism)
 
 # Bin drop points in the robot frame: (X, Y, Z of the tool point when releasing).
@@ -205,7 +205,7 @@ BINS = {
 APPROACH_HEIGHT = 15.0   # conservative for the current three-joint test workspace   # hover this far above the pick / drop point before going straight down
 LIFT_HEIGHT = 15.0       # increase only after a staged reachability test       # lift this far after the magnet grabs
 MOVE_MS = 1200           # free-space moves (firmware may stretch it to respect its speed limits)
-DESCEND_MS = 700         # straight down / up near the part
+DESCEND_MS = 1300        # straight down / up near the part
 PARK_MS = 1200
 
 # =============================================================================

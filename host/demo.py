@@ -3,9 +3,11 @@ demo.py - scripted pick-and-place demo with the live camera view
 ================================================================
 The parts sit at fixed, measured spots (PARTS below) instead of being found by the
 vision pipeline. Every move is planned exactly like sorter.py does it (same IK, same
-waypoints, same bins), and the camera window shows the table live, with the pick spots
-and bins drawn on it once calibrate_camera.py has been run.
+waypoints, same bins), and the camera window shows the table live, with each pick spot,
+its drop spot and an arrow between them once the camera is calibrated.
 
+    python demo.py --port auto --calibrate      one-off: the arm shows the camera where it
+                                                reaches; click the magnet each time it stops
     python demo.py --port auto                  camera from CAMERA_URL in config.py
     python demo.py --port auto --camera 0       laptop / USB webcam instead
     python demo.py --port auto --no-camera      arm only, no window
@@ -36,6 +38,10 @@ PARTS = [
     ("nut",  185.0,   0.0),    # 18.5 cm straight ahead
     ("bolt", 165.0, -77.0),    # 16.5 cm ahead, 7.7 cm to the right (18.2 cm out)
 ]
+# Where the arm parks the magnet (just above the table) during --calibrate, as
+# (distance from the base axis mm, angle deg; + = left). Spread over everything it reaches.
+CALIB_SPOTS = [(178, -55), (188, -25), (178, 0), (188, 25), (178, 55), (186, 80)]
+CALIB_Z = 4.0
 WINDOW = "Sorter demo"
 COLOURS = {"waiting": (0, 220, 255), "active": (0, 255, 0), "done": (160, 160, 160)}
 
@@ -53,6 +59,14 @@ class Demo:
         self.status = "ready - press SPACE to start"
         self.started = self.cam is None
         self.quit = False
+        self.clicks = []
+        if self.cam is not None:
+            cv2.namedWindow(WINDOW)
+            cv2.setMouseCallback(WINDOW, self._on_mouse)
+
+    def _on_mouse(self, event, x, y, _flags, _param):
+        if event == cv2.EVENT_LBUTTONDOWN:
+            self.clicks.append((x, y))
 
     # ------------------------------------------------------------------ window
     def pump(self):
@@ -82,9 +96,13 @@ class Demo:
             for label, x, y in PARTS:
                 u, v = (int(round(c)) for c in self.mapper.mm_to_px(x, y))
                 colour = COLOURS[self.state[label]]
+                bx, by, _bz = C.BINS[label]
+                bu, bv = (int(round(c)) for c in self.mapper.mm_to_px(bx, by))
+                cv2.arrowedLine(frame, (u, v), (bu, bv), colour, 2, tipLength=0.06)
                 cv2.circle(frame, (u, v), 18, colour, 2)
                 cv2.putText(frame, label, (u + 22, v + 6), cv2.FONT_HERSHEY_SIMPLEX, 0.6, colour, 2)
-            for label, (bx, by, _bz) in C.BINS.items():
+            for label in {label for label, _x, _y in PARTS}:
+                bx, by, _bz = C.BINS[label]
                 u, v = (int(round(c)) for c in self.mapper.mm_to_px(bx, by))
                 cv2.rectangle(frame, (u - 16, v - 16), (u + 16, v + 16), (255, 160, 0), 2)
                 cv2.putText(frame, f"{label} bin", (u + 20, v + 6),
@@ -133,6 +151,42 @@ class Demo:
             self.started = False
             self.wait()
 
+    def calibrate(self):
+        """The arm parks the magnet at known spots; a click on it in the picture pairs
+        pixel and millimetres. Saves the homography that sorter.py and this demo use."""
+        import math
+        if self.cam is None:
+            sys.exit("--calibrate needs the camera")
+        self.arm.connect()
+        px, mm = [], []
+        for i, (r, ang) in enumerate(CALIB_SPOTS, 1):
+            x, y = r * math.cos(math.radians(ang)), r * math.sin(math.radians(ang))
+            self.status = f"point {i}/{len(CALIB_SPOTS)}: moving..."
+            sol = K.solve(x, y, CALIB_Z)
+            self.arm.move(list(sol.servo) + [0], C.MOVE_MS, on_wait=self.pump)
+            self.status = f"point {i}/{len(CALIB_SPOTS)}: click the centre of the magnet"
+            self.clicks.clear()
+            while not self.clicks and not self.quit:
+                self.pump()
+                time.sleep(0.03)
+            if self.quit:
+                return
+            px.append(self.clicks[-1])
+            mm.append((x, y))
+            log.info("point %d: (%.0f, %.0f) mm -> pixel %s", i, x, y, self.clicks[-1])
+        frame, _ = self.cam.latest()
+        h, w = frame.shape[:2]
+        self.mapper = PlaneMapper.from_points(px, mm, (w, h))
+        self.mapper.save(extra={"points_px": [list(map(float, c)) for c in px],
+                                "points_mm": [list(c) for c in mm], "method": "arm-guided"})
+        self._size = None
+        log.info("camera calibrated: %d points, rms %.1f mm -> %s",
+                 len(px), self.mapper.rms_mm or 0.0, C.HOMOGRAPHY_FILE)
+        self.home()
+        self.status = f"calibrated (rms {self.mapper.rms_mm or 0:.1f} mm) - q to close"
+        self.started = False
+        self.wait()
+
     def shutdown(self):
         try:
             self.home()
@@ -154,12 +208,14 @@ def main(argv=None):
     p.add_argument("--no-camera", action="store_true", help="no camera window")
     p.add_argument("--sim", action="store_true", help="simulate the arm (no serial)")
     p.add_argument("--sim-speed", type=float, default=4.0)
+    p.add_argument("--calibrate", action="store_true",
+                   help="calibrate the camera: click the magnet as the arm parks it at known spots")
     args = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(message)s",
                         datefmt="%H:%M:%S")
     demo = Demo(args)
     try:
-        demo.run()
+        demo.calibrate() if args.calibrate else demo.run()
     except KeyboardInterrupt:
         log.info("stopped")
     finally:
