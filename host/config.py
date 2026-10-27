@@ -155,17 +155,19 @@ MIN_ELBOW_Z = 25.0
 # W4/W5 are not actuated by the adapted firmware; their command slots stay at 90.
 JOINTS = {
     "base":        dict(zero=90.0, direction=+1, min=5.0, max=175.0),
-    "shoulder":    dict(zero=90.0, direction=+1, min=10.0, max=160.0),
+    "shoulder":    dict(zero=90.0, direction=+1, min=10.0, max=175.0),  # 180 = just past vertical
     "elbow":       dict(zero=90.0, direction=+1, min=10.0, max=160.0),
     "wrist_pitch": dict(zero=90.0, direction=+1, min=10.0, max=160.0),
     "wrist_roll":  dict(zero=90.0, direction=+1, min=10.0, max=160.0),
 }
 
 # Protocol still contains 5 servo angles + magnet state. Keep both poses six-wide.
-HOME_SERVO = [90, 90, 90, 90, 90, 0]
+# Upright (shoulder 170 ~ vertical, elbow straight): centre of mass over the base,
+# so the arm starts and rests without tipping. Must match HOME_POSE in the firmware.
+HOME_SERVO = [90, 170, 90, 90, 90, 0]
 # Bench-safe placeholder only. After collision-checking, choose a PARK pose that
 # moves the arm out of the camera view and remains inside the calibrated limits.
-PARK_SERVO = [90, 90, 90, 90, 90, 0]
+PARK_SERVO = [90, 170, 90, 90, 90, 0]
 
 # =============================================================================
 # 6. ELECTROMAGNET, PICK HEIGHTS AND BINS
