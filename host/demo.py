@@ -141,7 +141,10 @@ class Demo:
         self.arm.close()
         if self.cam is not None:
             self.cam.stop()
-            cv2.destroyAllWindows()
+            try:
+                cv2.destroyAllWindows()
+            except cv2.error:
+                pass
 
 
 def main(argv=None):

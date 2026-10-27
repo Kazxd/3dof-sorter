@@ -213,7 +213,7 @@ PARK_MS = 1200
 # =============================================================================
 SERIAL_PORT = "tcp://192.168.4.1:8888"  # ESP32 Wi-Fi TCP
 SERIAL_BAUD = 115200
-READY_TIMEOUT_S = 4.0    # boards reset when the port opens; wait this long for <READY>
+READY_TIMEOUT_S = 8.0    # boards reset when the port opens; the ESP32 wakes its servos one by one first
 ACK_TIMEOUT_S = 0.5
 SEND_RETRIES = 3
 DONE_MARGIN_S = 3.0      # extra time allowed beyond the commanded duration
