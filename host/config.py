@@ -55,8 +55,8 @@ ARUCO_MARKERS_MM = {          # marker id -> robot-frame XY of the marker CENTRE
 
 # Pick area in the robot frame. Parts outside this rectangle are ignored
 # (keeps the bins, the robot base and table edges out of the search).
-WORKSPACE_X = (178.0, 186.0)  # the hanging magnet reaches the table only ~176-191 mm out
-WORKSPACE_Y = (-25.0, 25.0)
+WORKSPACE_X = (177.0, 185.0)  # the hanging magnet reaches the table only ~175-190 mm out
+WORKSPACE_Y = (-30.0, 30.0)
 
 # =============================================================================
 # 3. VISION
@@ -130,7 +130,7 @@ L3 = 75.0
 # "rigid" is the older model (magnet fixed to the forearm, L3 to the face, pitch follows it).
 TOOL_MOUNT = "hanging"
 TOOL_FORWARD = 0.0
-TOOL_DOWN = 61.0         # hanger pivot -> magnet face (PETG hanger)
+TOOL_DOWN = 51.0         # 61 mm pivot -> face on the CAD; 51 makes the face land on the part (bench)
 TOOL_AXIS_DEG = -90.0    # rigid mode only: face-down relative to a horizontal forearm
 TOOL_SELF_LEVELING = True
 HANG_MAX_FOREARM_UP_DEG = 30.0   # steeper and the hanger rests on the forearm
@@ -155,7 +155,7 @@ MIN_ELBOW_Z = 25.0
 # W4/W5 are not actuated by the adapted firmware; their command slots stay at 90.
 JOINTS = {
     "base":        dict(zero=90.0, direction=+1, min=5.0, max=175.0),
-    "shoulder":    dict(zero=90.0, direction=+1, min=85.0, max=175.0),  # 180 = just past vertical; never far below level
+    "shoulder":    dict(zero=90.0, direction=+1, min=75.0, max=175.0),  # 180 = just past vertical; at most ~15 deg below level
     "elbow":       dict(zero=123.0, direction=-1, min=10.0, max=175.0),  # bigger servo deg folds the forearm DOWN;
                                                                          # pegs in line with the upper arm at 123 (bench test)
     "wrist_pitch": dict(zero=90.0, direction=+1, min=10.0, max=160.0),
