@@ -1,0 +1,87 @@
+# Training data for host/models/best.pt (YOLOv8n, classes: washer, nut, bolt).
+#
+# The images are NOT stored in Git (about 17k images; several licences forbid or limit
+# redistribution). `python host/get_model.py download` (or train_colab.ipynb) fetches every
+# source below into its `folder`; `merge` remaps the labels into datasets/merged/.
+# Images = the source's own count on Roboflow / Hugging Face; at most 1,500 training images
+# per source are used (MAX_TRAIN_PER_SOURCE in get_model.py).
+
+layout:
+  raw: datasets/raw/<name>/          # one folder per source, as downloaded (YOLOv8 export)
+  own: datasets/own/                 # our own labelled photos (optional, needs data.yaml)
+  merged: datasets/merged/data.yaml  # generated: what YOLO trains on
+
+sources:
+  - name: 0428parts
+    folder: datasets/raw/0428parts/
+    url: https://universe.roboflow.com/new-workspace-jdteu/0428parts
+    images: 3711
+    licence: CC BY 4.0
+  - name: mech_parts_gamal
+    folder: datasets/raw/mech_parts_gamal/
+    url: https://universe.roboflow.com/abdalrahman-gamal/mechanical-parts-detection-glf33
+    images: 5237
+    licence: CC BY 4.0
+  - name: ecen250_hardware
+    folder: datasets/raw/ecen250_hardware/
+    url: https://universe.roboflow.com/ecen250finalproject/hardware-g8ena
+    images: 1379
+    licence: CC BY 4.0
+  - name: yellow_silver
+    folder: datasets/raw/yellow_silver/
+    url: https://universe.roboflow.com/jingjing-huang/yellow_silver
+    images: 1401
+    licence: CC BY 4.0
+    note: version 4 (3,641 images after Roboflow augmentation) was the export seen locally
+  - name: red_silver
+    folder: datasets/raw/red_silver/
+    url: https://universe.roboflow.com/jingjing-huang/red_silver
+    images: 934
+    licence: CC BY 4.0
+  - name: bolts_final
+    folder: datasets/raw/bolts_final/
+    url: https://universe.roboflow.com/bolts/bolts-final
+    images: 872
+    licence: CC BY 4.0
+  - name: ecen289_final
+    folder: datasets/raw/ecen289_final/
+    url: https://universe.roboflow.com/ecen289project/final-frpi8
+    images: 700
+    licence: CC BY 4.0
+  - name: nutcrackers
+    folder: datasets/raw/nutcrackers/
+    url: https://universe.roboflow.com/vidhu-mathur-e3zu3/nutcrackers
+    images: 206
+    licence: CC BY 4.0
+  - name: yamaha_nuts_bolts
+    folder: datasets/raw/yamaha_nuts_bolts/
+    url: https://universe.roboflow.com/yamaha-50qun/nuts-bolts-detection
+    images: 177
+    licence: CC BY 4.0
+  - name: nutsnbolts
+    folder: datasets/raw/nutsnbolts/
+    url: https://universe.roboflow.com/tktk-hodc3/nutsnbolts
+    images: 50
+    licence: CC BY 4.0
+    note: version 5 (130 images after augmentation) was the export seen locally
+  - name: mech_parts_cakir
+    folder: datasets/raw/mech_parts_cakir/
+    url: https://universe.roboflow.com/mazhar-cakir/mechanical-parts
+    images: 2250
+    licence: CC BY-NC-SA 4.0
+  - name: quail_synthetic
+    folder: datasets/raw/quail_synthetic/
+    url: https://huggingface.co/datasets/quailrobot/fasteners-v1-sample
+    images: 300
+    licence: CC BY-NC-SA 4.0
+    note: synthetic renders
+
+# The FIRST model (before retraining) used a single dataset, which IS in the repo, on the
+# 3dof-dashboard and older-working branches (not on main):
+first_model:
+  name: Nuts and Bolts v1
+  location: "branch 3dof-dashboard: 'Nuts and Bolts.v1i.yolov8/' (+ .zip)"
+  url: https://universe.roboflow.com/bandhams-workspace/nuts-and-bolts-wusr5/dataset/1
+  images: 1469   # 1,286 train / 122 valid / 61 test
+  licence: CC BY 4.0
+  classes: ["0", "1", "2", "3", "4", "5"]   # unnamed; mapped to nut/bolt/washer by hand in app.py
