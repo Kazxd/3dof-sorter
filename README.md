@@ -5,9 +5,9 @@
 
 A phone camera looks down at a mat. The PC finds washers, nuts and bolts, works out
 where each one is in millimetres, solves the arm's joint angles, and sends them over
-USB to an Arduino Nano or ESP32. The board moves five servos smoothly through a PCA9685
-and switches a 12 V electromagnet through a MOSFET. Each part is lifted by the magnet
-and dropped into its own bin.
+USB to an Arduino Nano or ESP32. The board moves the servos smoothly through a PCA9685
+and switches a 12 V electromagnet through a driver module (MOSFET in the design, an L298N
+on the bench). Each part is lifted by the magnet and dropped into its own bin.
 
 ```
  phone (IP Webcam) ──Wi-Fi──▶ PC: camera.py ─▶ vision.py ─▶ mapping.py ─▶ kinematics.py ─▶ arm_link.py
@@ -15,7 +15,7 @@ and dropped into its own bin.
                                    frame        fallback       (homography)     + limits         <M,seq,…*CS>
                                                                                                    │
         5 servos ◀── PCA9685 ◀── I²C ◀── Nano / ESP32: firmware/arm_controller.ino ◀──────────────┘
-        magnet   ◀── MOSFET  ◀── D7  ◀── parse · clamp · min-jerk smoothing · magnet safety · ACK/DONE
+        magnet   ◀── driver  ◀── GPIO18 (Nano: D7) ◀── parse · clamp · min-jerk smoothing · ACK/DONE
 ```
 
 `host/sorter.py` runs the cycle: **park → scan → select → plan → press + magnet on → lift →
@@ -64,6 +64,58 @@ calibration. The camera stream itself works (`CAMERA_URL`, IP Webcam at 640x480)
 
 **Power-up order that works:** servo 6 V on first, hold the arm, then plug in the USB. The
 firmware wakes the servos one at a time, so nothing whips.
+
+## Bench procedure (as used on 27 Oct 2026)
+
+Everything is typed in PowerShell in `host/`. Only one program may hold COM14 at a time:
+close the Arduino Serial Monitor and any other console first.
+
+**1. Firmware.** Arduino IDE -> `firmware/arm_controller/arm_controller.ino` -> board *ESP32
+Dev Module*, port COM14 -> Upload. Re-upload whenever `LIMIT_*`, `HOME_POSE`, the pulse
+range or `MAGNET_AUTO_OFF` change. The servo pulse range is 500-2500 us (the full MG996R
+travel; 1000-2000 only gave half the motion).
+
+**2. Power-up, every time.** Servo 6 V on first, hold the arm, then plug in the USB. The
+firmware wakes the servos one by one into the upright home pose (base 90, shoulder 170,
+elbow 90). Never switch the servo power on while a host program is still connected: the
+board remembers the last command and the arm jumps to it. To start over: Ctrl+C, unplug
+USB, servo power off, then repeat this step.
+
+**3. Joint check (first time, or after any mechanical change).** `python arm_console.py
+--port auto`, then `j 0 120` (base turns left), `j 0 90`, `j 1 120` (shoulder lifts),
+`j 2 150` (forearm folds down). If a joint goes the other way, flip its `direction` in
+`JOINTS`. For the raw servo ends use `firmware/servo_test/servo_test.ino` instead (no
+limits; `1` selects the shoulder, `a90`, `s10`, `+` / `-`, `o` = all off).
+
+**4. One pick by hand** (checks L1-L3 and `TOOL_DOWN`): a nut 185 mm straight ahead of the
+base axis, then in `arm_console.py`, pasted as one block so the magnet is not on for long:
+
+```
+go 185 0 30
+go 185 0 2
+mag 1
+go 185 0 60
+go 102 146 50
+mag 0
+home
+```
+
+At `go 185 0 30` the face should be ~30 mm above the nut; at `go 185 0 2` touching it.
+Off by more than ~5 mm vertically -> adjust `TOOL_DOWN`; off horizontally -> `L3` / `L1`.
+
+**5. Camera.** IP Webcam on the phone, 640x480, *Start server*; put its address in
+`CAMERA_URL` with `/video` on the end. Mount the phone looking straight down from 40-50 cm
+so it sees the base, the pick strip and the bins, and fix it. Then either
+`python demo.py --port auto --calibrate` (click the magnet each time the arm stops; 6
+clicks) or `python calibrate_camera.py` with taped crosses at the `CALIB_POINTS_MM` spots.
+
+**6. Scripted demo.** Nut at 185 mm ahead; bolt 165 mm ahead and 77 mm to the right (both
+inside the reach strip); trays at the `BINS` spots. `python demo.py --port auto`, SPACE
+starts, q stops with the magnet off. Status at the top of the window, circles / arrows on
+the feed once calibrated.
+
+**7. Live sorting** (not yet done on hardware): `python sorter.py --no-arm` to see the
+detections and reachability, then `python sorter.py --port auto`.
 
 ## Folder layout
 

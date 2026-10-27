@@ -111,6 +111,10 @@ PLA is fine for a quick fit check of the adapter on your servo horn before the P
 MOSFET D ──┴──────────── magnet lead B
 MOSFET S ── GND  (12 V GND, servo GND and Arduino GND all joined)
 MOSFET G ── 220 Ω ── Nano D7  /  ESP32 GPIO18      (+ 10 kΩ from G to GND)
+
+As built (Oct 2026) an L298N module stands in for the MOSFET: IN1 ← GPIO18, IN2 → GND,
+ENA bridged, 12 V on its supply terminals (GND shared with the ESP32), magnet on OUT1/OUT2,
+5V-EN jumper on. It has its own flyback diodes but drops ~2 V, so the magnet sees ~10 V.
 ```
 
 Never drive the coil straight from a pin, and never leave out the diode.
