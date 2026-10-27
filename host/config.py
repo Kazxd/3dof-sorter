@@ -36,10 +36,10 @@ HOMOGRAPHY_FILE = CALIB_DIR / "homography.json"
 # ArUco markers) and MEASURE them from the base axis with a ruler.
 # 4 points is the minimum; 6-9 points spread over the mat average out click error.
 CALIB_POINTS_MM = [
-    (110.0,  110.0),   # P1 front-left
-    (230.0,  110.0),   # P2 far-left
-    (230.0, -110.0),   # P3 far-right
-    (110.0, -110.0),   # P4 front-right
+    (140.0,   60.0),   # P1 near-left   (demo rectangle around the pick area:
+    (220.0,   60.0),   # P2 far-left     tape crosses at these spots, measured
+    (220.0,  -60.0),   # P3 far-right    from the point under the base axis)
+    (140.0,  -60.0),   # P4 near-right
 ]
 
 # Optional: ArUco markers on the mat corners let the homography be recomputed
@@ -47,10 +47,10 @@ CALIB_POINTS_MM = [
 USE_ARUCO = False
 ARUCO_DICT = "DICT_4X4_50"
 ARUCO_MARKERS_MM = {          # marker id -> robot-frame XY of the marker CENTRE
-    0: (110.0,  110.0),
-    1: (230.0,  110.0),
-    2: (230.0, -110.0),
-    3: (110.0, -110.0),
+    0: (140.0,  60.0),
+    1: (220.0,  60.0),
+    2: (220.0, -60.0),
+    3: (140.0, -60.0),
 }
 
 # Pick area in the robot frame. Parts outside this rectangle are ignored
