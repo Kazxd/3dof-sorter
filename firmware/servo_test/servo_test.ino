@@ -6,7 +6,7 @@
   and find each servo's limits before the real firmware is used.
 
   Same wiring as arm_controller.ino (PCA9685 on I2C, servos on channels 15-11,
-  magnet MOSFET on D7 / ESP32 GPIO25).
+  magnet driver on D7 / ESP32 GPIO18).
 
   Open the Serial Monitor at 115200 baud, line ending "Newline", and type:
     0..4        select a servo (0 base, 1 shoulder, 2 elbow, 3 wrist pitch, 4 wrist roll)
@@ -33,7 +33,7 @@
 #define BAUD           115200
 #define NUM_SERVOS     5
 #if defined(ESP32)
-  #define MAGNET_PIN   25
+  #define MAGNET_PIN   18          // GPIO18 (D18, left pin row) -> L298N IN1
 #else
   #define MAGNET_PIN   7
 #endif
