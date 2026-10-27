@@ -84,7 +84,7 @@ const uint16_t PULSE_MAX_US[NUM_SERVOS]    = {2500, 2500, 2500, 2500, 2500};
 const float    SERVO_RANGE_DEG[NUM_SERVOS] = {180, 180, 180, 180, 180};
 // Hard limits in servo degrees: keep in sync with JOINTS min/max in host/config.py.
 const float    LIMIT_MIN[NUM_SERVOS]       = {5, 10, 10, 10, 10};
-const float    LIMIT_MAX[NUM_SERVOS]       = {175, 175, 160, 160, 160};
+const float    LIMIT_MAX[NUM_SERVOS]       = {175, 175, 175, 160, 160};
 // Pose written at power-up (keep in sync with HOME_SERVO in host/config.py).
 const float    HOME_POSE[NUM_SERVOS]       = {90, 170,  90,  90,  90};   // upright: weight over the base
 // Speed caps in deg/s. Big joints carry the most load: keep them slow.

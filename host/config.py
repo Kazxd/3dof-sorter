@@ -55,8 +55,8 @@ ARUCO_MARKERS_MM = {          # marker id -> robot-frame XY of the marker CENTRE
 
 # Pick area in the robot frame. Parts outside this rectangle are ignored
 # (keeps the bins, the robot base and table edges out of the search).
-WORKSPACE_X = (163.0, 186.0)  # the hanging magnet reaches the table ~160-192 mm out
-WORKSPACE_Y = (-30.0, 30.0)
+WORKSPACE_X = (178.0, 186.0)  # the hanging magnet reaches the table only ~176-191 mm out
+WORKSPACE_Y = (-25.0, 25.0)
 
 # =============================================================================
 # 3. VISION
@@ -155,8 +155,9 @@ MIN_ELBOW_Z = 25.0
 # W4/W5 are not actuated by the adapted firmware; their command slots stay at 90.
 JOINTS = {
     "base":        dict(zero=90.0, direction=+1, min=5.0, max=175.0),
-    "shoulder":    dict(zero=90.0, direction=+1, min=10.0, max=175.0),  # 180 = just past vertical
-    "elbow":       dict(zero=90.0, direction=-1, min=10.0, max=160.0),  # bigger servo deg folds the forearm DOWN
+    "shoulder":    dict(zero=90.0, direction=+1, min=85.0, max=175.0),  # 180 = just past vertical; never far below level
+    "elbow":       dict(zero=123.0, direction=-1, min=10.0, max=175.0),  # bigger servo deg folds the forearm DOWN;
+                                                                         # pegs in line with the upper arm at 123 (bench test)
     "wrist_pitch": dict(zero=90.0, direction=+1, min=10.0, max=160.0),
     "wrist_roll":  dict(zero=90.0, direction=+1, min=10.0, max=160.0),
 }
