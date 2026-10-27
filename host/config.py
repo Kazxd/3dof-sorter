@@ -55,8 +55,8 @@ ARUCO_MARKERS_MM = {          # marker id -> robot-frame XY of the marker CENTRE
 
 # Pick area in the robot frame. Parts outside this rectangle are ignored
 # (keeps the bins, the robot base and table edges out of the search).
-WORKSPACE_X = (188.5, 190.0)  # temporary test zone only; expand after calibration
-WORKSPACE_Y = (-5.0, 5.0)
+WORKSPACE_X = (165.0, 188.0)  # the hanging magnet reaches the table ~160-192 mm out
+WORKSPACE_Y = (-30.0, 30.0)
 
 # =============================================================================
 # 3. VISION
@@ -119,21 +119,21 @@ IDLE_WAIT_S = 1.5             # pause between scans when nothing is pickable
 # =============================================================================
 # 4. ARM GEOMETRY -- provisional measurements for the user's 3-DOF arm
 # =============================================================================
-# Units are mm. L1: table to shoulder rotation axis; L2: shoulder-to-elbow axes; L3: elbow axis to magnet contact-face center, along the forearm.
-# L3: elbow axis to the magnet's suspension/pivot axis.
+# Units are mm. L1: table to shoulder rotation axis; L2: shoulder-to-elbow axes.
+# L3: elbow axis to the hanger's pivot pegs (MEASURE: 75 is read off a photo).
 L1 = 90.0
 L2 = 120.0
-L3 = 100.0
+L3 = 75.0
 
-# Rigid magnet mount: L3 ends at the centre of the magnet's flat contact face.
-# The line from the elbow axis to that point is aligned with the forearm (0 deg).
-# With the forearm horizontal, the magnet face points straight down. At other poses,
-# its pitch follows the forearm because there is no active wrist-pitch joint.
-TOOL_MOUNT = "rigid"
-TOOL_FORWARD = 0.0       # no extra local forward offset; included in L3 measurement
-TOOL_DOWN = 0.0          # no world-vertical offset for a rigid mount
-TOOL_AXIS_DEG = -90.0    # face-down orientation relative to a horizontal forearm
-TOOL_SELF_LEVELING = False
+# The magnet swings freely on the printed hanger (cad/magnet_hanger.scad), so it always
+# hangs face-down: its face is TOOL_DOWN straight below the pivot, whatever the forearm does.
+# "rigid" is the older model (magnet fixed to the forearm, L3 to the face, pitch follows it).
+TOOL_MOUNT = "hanging"
+TOOL_FORWARD = 0.0
+TOOL_DOWN = 61.0         # hanger pivot -> magnet face (PETG hanger)
+TOOL_AXIS_DEG = -90.0    # rigid mode only: face-down relative to a horizontal forearm
+TOOL_SELF_LEVELING = True
+HANG_MAX_FOREARM_UP_DEG = 30.0   # steeper and the hanger rests on the forearm
 SHOULDER_OFFSET = 0.0
 
 # Preferred absolute tool pitch. For this 3-DOF arm this is a preference/check,
@@ -156,7 +156,7 @@ MIN_ELBOW_Z = 25.0
 JOINTS = {
     "base":        dict(zero=90.0, direction=+1, min=5.0, max=175.0),
     "shoulder":    dict(zero=90.0, direction=+1, min=10.0, max=175.0),  # 180 = just past vertical
-    "elbow":       dict(zero=90.0, direction=+1, min=10.0, max=160.0),
+    "elbow":       dict(zero=90.0, direction=-1, min=10.0, max=160.0),  # bigger servo deg folds the forearm DOWN
     "wrist_pitch": dict(zero=90.0, direction=+1, min=10.0, max=160.0),
     "wrist_roll":  dict(zero=90.0, direction=+1, min=10.0, max=160.0),
 }
@@ -192,10 +192,11 @@ RELEASE_DWELL_MS = 400     # magnet off over the bin, wait before moving (residu
 # Bin drop points in the robot frame: (X, Y, Z of the tool point when releasing).
 # Put the bins outside WORKSPACE_* so they are never detected as parts.
 BINS = {
-    "washer": (195.0,   0.0, 50.0),
-    "nut":    (194.0,  20.0, 50.0),
-    "bolt":   (194.0, -20.0, 50.0),
-}  # provisional: each bin target is near a 195 mm radius
+    "washer": (102.0,  146.0, 50.0),   # 55 deg left of forward
+    "nut":    (102.0, -146.0, 50.0),   # 55 deg right
+    "bolt":   ( 31.0,  175.0, 50.0),   # 80 deg left
+}  # provisional: the hanging magnet reaches the table only ~160-192 mm from the base axis,
+   # so every bin sits on a ~178 mm radius, beside the pick area
 
 # =============================================================================
 # 7. MOTION

@@ -4,6 +4,9 @@ The Cartesian target is the centre of the magnet's flat contact face. L2 is the
 shoulder-to-elbow distance and L3 is the elbow-axis-to-contact-face-centre distance
 measured along the forearm. The magnet has no independently controlled wrist pitch
 or roll: its actual pitch follows the forearm angle plus TOOL_AXIS_DEG.
+
+With TOOL_MOUNT = "hanging" the magnet instead swings freely on a hanger: L3 ends at
+the hanger pivot, the face is always TOOL_DOWN straight below it and always level.
 """
 from dataclasses import dataclass
 import math
@@ -21,6 +24,15 @@ class IKSolution:
     kin: tuple       # five slots: base, shoulder, elbow, fixed wrist pitch, fixed roll
     servo: tuple     # five servo commands; magnet state is appended by the caller
     pitch: float     # actual rigid-tool pitch; -90 deg means face-down
+
+
+def hanging():
+    """True when the magnet swings on a hanger (always face-down) instead of a rigid mount."""
+    return getattr(C, "TOOL_MOUNT", "rigid") == "hanging"
+
+
+def _tool_drop():
+    return float(getattr(C, "TOOL_DOWN", 0.0)) if hanging() else 0.0
 
 
 def wrap_deg(angle, period=360.0):
@@ -56,7 +68,7 @@ def _angles_for_target(r, z):
     rw = r - float(getattr(C, "SHOULDER_OFFSET", 0.0))
     # Unlike the old gimbal model, the rigid magnet centre is the distal endpoint
     # of L3; there is no separate world-vertical TOOL_DOWN offset.
-    zw = z - float(C.L1)
+    zw = z + _tool_drop() - float(C.L1)
     d2 = rw * rw + zw * zw
     denom = 2.0 * l2 * l3
     if denom <= 0:
@@ -83,8 +95,11 @@ def forward_kinematics(kin):
     t1, t2, t3 = (math.radians(float(kin[i])) for i in range(3))
     l1, l2, l3 = float(C.L1), float(C.L2), float(C.L3)
     r = float(getattr(C, "SHOULDER_OFFSET", 0.0)) + l2 * math.cos(t2) + l3 * math.cos(t2 + t3)
-    z = l1 + l2 * math.sin(t2) + l3 * math.sin(t2 + t3)
-    pitch = wrap_deg(math.degrees(t2 + t3) + float(getattr(C, "TOOL_AXIS_DEG", -90.0)))
+    z = l1 + l2 * math.sin(t2) + l3 * math.sin(t2 + t3) - _tool_drop()
+    if hanging():
+        pitch = -90.0
+    else:
+        pitch = wrap_deg(math.degrees(t2 + t3) + float(getattr(C, "TOOL_AXIS_DEG", -90.0)))
     return r * math.cos(t1), r * math.sin(t1), z, pitch
 
 
@@ -93,7 +108,7 @@ def joint_heights(kin):
     t2 = math.radians(float(kin[1]))
     t3 = math.radians(float(kin[2]))
     elbow_z = float(C.L1) + float(C.L2) * math.sin(t2)
-    tool_z = elbow_z + float(C.L3) * math.sin(t2 + t3)
+    tool_z = elbow_z + float(C.L3) * math.sin(t2 + t3) - _tool_drop()
     return elbow_z, tool_z
 
 
@@ -132,7 +147,7 @@ def solve(x, y, z, closing_axis_deg=None, pitches=None):
         raise Unreachable(f"target ({x:.1f}, {y:.1f}, {z:.1f}) mm: {exc}") from exc
 
     targets = _pitch_targets(pitches)
-    strict_pitch = pitches is not None
+    strict_pitch = pitches is not None and not hanging()   # a hanging magnet is always level
     tolerance = float(getattr(C, "TOOL_PITCH_TOLERANCE_DEG", 25.0))
     valid = []
     failures = []
@@ -150,6 +165,10 @@ def solve(x, y, z, closing_axis_deg=None, pitches=None):
         elbow_z, _tool_z = joint_heights(kin)
         if elbow_z < float(C.MIN_ELBOW_Z):
             failures.append(f"elbow axis would be too low ({elbow_z:.1f} mm)")
+            continue
+        if hanging() and t2 + t3 > float(getattr(C, "HANG_MAX_FOREARM_UP_DEG", 30.0)):
+            # Forearm pointing up: the hanger would rest on it instead of hanging free.
+            failures.append(f"forearm points {t2 + t3:.0f} deg up; the hanger would not hang free")
             continue
         # There is no separate wrist pivot on this 3-DOF rigid-tool model. The distal
         # endpoint is the magnet contact centre and is intentionally allowed near the table.

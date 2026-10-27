@@ -1,36 +1,36 @@
-"""Smoke tests for the rigid-mount 3-DOF arm. No hardware access."""
+"""Smoke tests for the 3-DOF arm with the hanging magnet. No hardware access."""
 
 import config as C
 import kinematics as K
 
 
-def test_rigid_mount_pick_and_bin_targets_round_trip():
-    # The hardware has a rigid magnet, not a passive leveling gimbal.
-    assert C.TOOL_SELF_LEVELING is False
+def test_pick_and_bin_targets_round_trip():
+    # The magnet now swings on the printed hanger (cad/magnet_hanger.scad).
+    assert C.TOOL_MOUNT == "hanging"
 
     cases = {
         "washer_pick": (
-            189.0, 0.0,
+            180.0, 0.0,
             C.PICK["washer"]["z"] - C.PRESS_DEPTH,
         ),
         "washer_approach": (
-            189.0, 0.0,
+            180.0, 0.0,
             C.PICK["washer"]["z"] - C.PRESS_DEPTH + C.APPROACH_HEIGHT,
         ),
         "nut_pick": (
-            189.0, 0.0,
+            180.0, 0.0,
             C.PICK["nut"]["z"] - C.PRESS_DEPTH,
         ),
         "nut_approach": (
-            189.0, 0.0,
+            180.0, 0.0,
             C.PICK["nut"]["z"] - C.PRESS_DEPTH + C.APPROACH_HEIGHT,
         ),
         "bolt_pick": (
-            189.0, 0.0,
+            180.0, 0.0,
             C.PICK["bolt"]["z"] - C.PRESS_DEPTH,
         ),
         "bolt_approach": (
-            189.0, 0.0,
+            180.0, 0.0,
             C.PICK["bolt"]["z"] - C.PRESS_DEPTH + C.APPROACH_HEIGHT,
         ),
     }

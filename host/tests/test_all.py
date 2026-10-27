@@ -42,27 +42,48 @@ def test_ik_fk_round_trip():
 
 
 def test_rigid_mount_round_trip():
-    saved_axis = C.TOOL_AXIS_DEG
-    C.TOOL_AXIS_DEG = -90.0
+    saved = C.TOOL_AXIS_DEG, C.TOOL_MOUNT, C.L3
+    C.TOOL_AXIS_DEG, C.TOOL_MOUNT, C.L3 = -90.0, "rigid", 100.0
     try:
         n = 0
-        for x, y, z in ((150, 0, 3), (180, 60, 3), (200, -40, 20), (140, 90, 40)):
-            sol = K.solve(x, y, z)
-            fx, fy, fz, pitch = K.forward_kinematics(sol.kin)
-            assert max(abs(fx - x), abs(fy - y), abs(fz - z)) < 1e-6
-            assert abs(K.wrap_deg(pitch - sol.pitch)) < 1e-6
-            for i, servo in enumerate(sol.servo):
-                assert K.limit_violation(i, servo) is None
-            n += 1
-        assert n == 4
+        for x in range(60, 230, 10):
+            for z in (3, 20, 40, 80):
+                try:
+                    sol = K.solve(x, 0, z)
+                except K.Unreachable:
+                    continue
+                fx, fy, fz, pitch = K.forward_kinematics(sol.kin)
+                assert max(abs(fx - x), abs(fy), abs(fz - z)) < 1e-6
+                assert abs(K.wrap_deg(pitch - sol.pitch)) < 1e-6
+                for i, servo in enumerate(sol.servo):
+                    assert K.limit_violation(i, servo) is None
+                n += 1
+        assert n >= 4, n
     finally:
-        C.TOOL_AXIS_DEG = saved_axis
+        C.TOOL_AXIS_DEG, C.TOOL_MOUNT, C.L3 = saved
+
+
+def test_hanging_magnet_face_lands_on_target():
+    saved = C.TOOL_MOUNT, C.TOOL_DOWN
+    C.TOOL_MOUNT, C.TOOL_DOWN = "hanging", 61.0
+    try:
+        for x, y, z in ((175, 0, 2), (170, 25, 2), (180, -20, 17)):
+            sol = K.solve(x, y, z, pitches=C.PITCH_CANDIDATES)
+            assert sol.pitch == -90.0
+            t2, t3 = sol.kin[1], sol.kin[2]
+            pivot_r = C.L2 * math.cos(math.radians(t2)) + C.L3 * math.cos(math.radians(t2 + t3))
+            pivot_z = C.L1 + C.L2 * math.sin(math.radians(t2)) + C.L3 * math.sin(math.radians(t2 + t3))
+            assert abs(pivot_r - math.hypot(x, y)) < 1e-6
+            assert abs(pivot_z - C.TOOL_DOWN - z) < 1e-6     # face hangs TOOL_DOWN below the pivot
+            assert t2 + t3 <= C.HANG_MAX_FOREARM_UP_DEG + 1e-6
+    finally:
+        C.TOOL_MOUNT, C.TOOL_DOWN = saved
 
 
 def test_prefers_vertical_tool():
     # At this target the elbow remains above the configured floor while the rigid
     # magnet can point down within the configured angular tolerance.
-    sol = K.solve(200, 0, 3)
+    sol = K.solve(180, 0, 3)
     assert abs(K.wrap_deg(sol.pitch + 90.0)) <= C.TOOL_PITCH_TOLERANCE_DEG
 
 
@@ -269,7 +290,11 @@ def test_sorter_end_to_end_sim():
     saved = (
         C.HOMOGRAPHY_FILE, C.RUNS_DIR, C.SCAN_SETTLE_S,
         C.WORKSPACE_X, C.WORKSPACE_Y, C.TOOL_PITCH_TOLERANCE_DEG,
+        C.TOOL_MOUNT, C.L3, C.JOINTS["elbow"]["direction"],
     )
+    # Pipeline test, not physics: the old wide-reach rigid geometry so the synthetic
+    # parts spread over the whole mat can all be reached.
+    C.TOOL_MOUNT, C.L3, C.JOINTS["elbow"]["direction"] = "rigid", 100.0, +1
     C.HOMOGRAPHY_FILE, C.RUNS_DIR, C.SCAN_SETTLE_S = calib, tmp / "runs", 0.05
     # This test checks the pipeline, not the physics: let the rigid magnet tilt freely so
     # the synthetic parts (spread over the whole mat) are pickable.
@@ -284,6 +309,7 @@ def test_sorter_end_to_end_sim():
         (
             C.HOMOGRAPHY_FILE, C.RUNS_DIR, C.SCAN_SETTLE_S,
             C.WORKSPACE_X, C.WORKSPACE_Y, C.TOOL_PITCH_TOLERANCE_DEG,
+            C.TOOL_MOUNT, C.L3, C.JOINTS["elbow"]["direction"],
         ) = saved
     moves = [p for p in s.arm.sent if p.startswith("M,")]
     # park + 3 x (8 waypoints + park) + final park
