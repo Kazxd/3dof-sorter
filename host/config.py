@@ -55,7 +55,7 @@ ARUCO_MARKERS_MM = {          # marker id -> robot-frame XY of the marker CENTRE
 
 # Pick area in the robot frame. Parts outside this rectangle are ignored
 # (keeps the bins, the robot base and table edges out of the search).
-WORKSPACE_X = (165.0, 188.0)  # the hanging magnet reaches the table ~160-192 mm out
+WORKSPACE_X = (163.0, 186.0)  # the hanging magnet reaches the table ~160-192 mm out
 WORKSPACE_Y = (-30.0, 30.0)
 
 # =============================================================================
@@ -121,7 +121,7 @@ IDLE_WAIT_S = 1.5             # pause between scans when nothing is pickable
 # =============================================================================
 # Units are mm. L1: table to shoulder rotation axis; L2: shoulder-to-elbow axes.
 # L3: elbow axis to the hanger's pivot pegs (MEASURE: 75 is read off a photo).
-L1 = 90.0
+L1 = 103.0      # 33 mm turntable top -> shoulder screw + ~70 mm table -> turntable top (estimate)
 L2 = 120.0
 L3 = 75.0
 
