@@ -121,7 +121,7 @@ IDLE_WAIT_S = 1.5             # pause between scans when nothing is pickable
 # =============================================================================
 # Units are mm. L1: table to shoulder rotation axis; L2: shoulder-to-elbow axes.
 # L3: elbow axis to the hanger's pivot pegs (MEASURE: 75 is read off a photo).
-L1 = 103.0      # 33 mm turntable top -> shoulder screw + ~70 mm table -> turntable top (estimate)
+L1 = 95.0       # 62 mm table -> top of the blue turntable + 33 mm -> shoulder screw (measured)
 L2 = 120.0
 L3 = 75.0
 
