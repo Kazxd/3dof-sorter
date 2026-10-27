@@ -63,6 +63,8 @@ Use a separate 5–6 V servo supply sized for the actual servo stall current (th
 
 The firmware uses ESP32 GPIO 18 (D18, on the left pin row) as a logic output for a suitable MOSFET driver. Never drive a coil directly from an ESP32 pin. Use a correctly rated logic-level MOSFET/module, gate resistor and pull-down as required, and a flyback diode across the coil (diode cathode/stripe toward the positive supply). The 12 V magnet supply is separate from the servo supply. Verify that the driver is wired for the configured active-high/active-low behaviour before connecting coil power.
 
+**As built (Oct 2026):** the magnet is switched by an L298N module instead of a MOSFET: IN1 <- GPIO18, IN2 -> GND, ENA bridged, 12 V adapter on the 12V/GND terminals (GND shared with the ESP32), magnet on OUT1/OUT2, 5V-EN jumper on. It works but drops about 2 V. The magnet releasing the part as the arm lifts (see README.md, *Bench status*) is most likely the shared 12 V adapter sagging under servo load; use separate supplies for the servos and the magnet, or a relay/MOSFET module for the full 12 V. The firmware's magnet cut-offs are disabled by default (`MAGNET_AUTO_OFF 0` in `arm_controller.ino`).
+
 Do not perform magnet tests while diagnosing IK or camera mapping. First validate positioning with the magnet power disconnected.
 
 ### 3.3 Install Arduino CLI and compile

@@ -174,8 +174,10 @@ PARK_SERVO = [90, 170, 90, 90, 90, 0]
 # 6. ELECTROMAGNET, PICK HEIGHTS AND BINS
 # =============================================================================
 # End effector: KK-P20/15 lifting electromagnet, 12 V DC, about 0.2 A, 20 mm x 15 mm,
-# up to 3 kg on flat clean mild steel. It sits in the spring-loaded printed housing
-# in cad/ and is switched by the Arduino through a logic-level MOSFET (README wiring).
+# up to 3 kg on flat clean mild steel. It swings on the printed hanger (cad/magnet_hanger.scad)
+# and is switched by the ESP32 through an L298N on GPIO18 (README wiring). Bench, Oct 2026:
+# it grips a nut but lets go as the lift starts; suspected 12 V sag under servo load, see
+# README.md "Bench status".
 # Only ferromagnetic parts lift: plain or zinc-plated steel. Stainless A2/A4 and brass will not.
 #
 # Per class: z = height of the part's top face above the table, which is where the

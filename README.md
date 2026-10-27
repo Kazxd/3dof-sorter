@@ -25,6 +25,46 @@ view, so the arm never hides parts or gets mistaken for one.
 The earlier 3-DOF vision dashboard lives on the
 [`3dof-dashboard`](https://github.com/Kazxd/3dof-sorter/tree/3dof-dashboard) branch.
 
+## Bench status (27 Oct 2026)
+
+What is actually built and what has been run on the real arm. For the report, this is the
+ground truth; everything below it describes the full design.
+
+**The arm on the bench is a 3-joint arm** (base, shoulder, elbow; the kit's wrist and
+gripper were removed) driven by an ESP32 and a PCA9685, with the KK-P20/15 magnet
+swinging on the printed hanger from `cad/magnet_hanger.scad` and switched by an **L298N**
+(not a MOSFET). Everything is measured and tuned in `host/config.py`:
+
+| Item | Value | How it was found |
+|---|---|---|
+| L1 table -> shoulder axis | 95 mm | ruler: 62 mm to the turntable top + 33 mm |
+| L2 shoulder -> elbow axes | 120 mm | ruler |
+| L3 elbow axis -> hanger pegs | 75 mm | ruler |
+| Magnet face below the pegs | 51 mm | 61 mm on the CAD, corrected on the bench (`TOOL_DOWN`) |
+| Elbow "straight" | servo 123, bigger = forearm down | jogging with `servo_test.ino` and `arm_console.py` |
+| Shoulder | servo 90 = level, 180 = just past vertical | same |
+| Home / park | base 90, shoulder 170, elbow 90 (upright, weight over the base) | chosen so power-up cannot tip the arm |
+| Pick strip on the table | 177-185 mm from the base axis, +/-30 mm sideways | computed from the IK with the limits above |
+| Bins | three spots on a 178 mm radius, reached by turning the base | same |
+
+**Verified on hardware:** the whole motion side. `demo.py` connects over USB, homes,
+descends onto a nut at 185 mm, switches the magnet on, lifts, swings the base to the bin,
+lowers, releases, returns home and repeats for a bolt, with the phone feed live in the
+window (video of 27 Oct). All 29 host tests pass, the firmware compiles.
+
+**Open issue, the only one:** the magnet grips the nut and then **lets go as the shoulder
+starts lifting**, and does not hold a flat bolt at all. The timing points to the 12 V
+supply sagging under the servo load (one adapter feeds both the buck for the servos and the
+magnet) plus the ~2 V the L298N drops. Not yet tried: separate supplies (magnet on the
+adapter, servos on the battery, common GND) and a relay/MOSFET instead of the L298N. The
+checks are listed under *Known limitations*.
+
+**Not yet run on hardware:** the vision loop (`sorter.py` end to end) and the camera
+calibration. The camera stream itself works (`CAMERA_URL`, IP Webcam at 640x480).
+
+**Power-up order that works:** servo 6 V on first, hold the arm, then plug in the USB. The
+firmware wakes the servos one at a time, so nothing whips.
+
 ## Folder layout
 
 | Path | What it does |
@@ -42,6 +82,7 @@ The earlier 3-DOF vision dashboard lives on the
 | `host/hsv_tuner.py` | Sliders for the HSV fallback; shows how each blob is classified. |
 | `host/arm_console.py` | Jog servos, switch the magnet, test IK with `go x y z`. |
 | `host/motion_test.py` | Staged movement test: every joint, magnet, IK points, speed cap, repeatability. |
+| `host/demo.py` | Scripted pick-and-place of parts at fixed spots with the live camera window; `--calibrate` lets the arm calibrate the camera. |
 | `host/tests/` | Hardware-free tests and a synthetic scene generator. |
 | `firmware/arm_controller/` | Board firmware. |
 | `firmware/servo_test/` | Standalone first power-up sketch: drive servos from the Serial Monitor. |
@@ -51,23 +92,27 @@ The earlier 3-DOF vision dashboard lives on the
 
 | From | To |
 |---|---|
-| PCA9685 VCC / GND | Board 5V / GND (logic power only) |
-| PCA9685 SDA / SCL | Nano A4 / A5, or ESP32 GPIO21 / GPIO22 |
-| PCA9685 V+ (screw terminal) | **Separate 5–6 V servo supply, at least 5 A** |
-| PCA9685 ch 15, 14, 13, 12, 11 | base, shoulder, elbow, wrist pitch, wrist roll (as wired on our arm) |
-| MOSFET gate (via 220 Ω, 10 kΩ to GND) | Nano D7, or ESP32 GPIO18 (D18) |
-| MOSFET drain / +12 V | Magnet leads, with a 1N4007 / 1N5819 diode across them (stripe to +12 V) |
+| PCA9685 VCC / GND | ESP32 3V3 / GND (logic power only) |
+| PCA9685 SDA / SCL | ESP32 GPIO21 / GPIO22 (Nano: A4 / A5) |
+| PCA9685 V+ (screw terminal) | **6 V from the buck converter** (12 V adapter -> buck), at least 5 A |
+| PCA9685 ch 15, 14, 13 | base, shoulder, elbow (ch 12, 11 are the unused wrist slots) |
+| L298N IN1 | ESP32 GPIO18 (D18, left pin row); IN2 -> GND; ENA bridged with a wire |
+| L298N 12V / GND | 12 V adapter, GND shared with the ESP32; 5V-EN jumper on |
+| L298N OUT1 / OUT2 | Magnet leads (the board has its own flyback diodes) |
+
+The L298N drops about 2 V, so the magnet sees ~10 V. A relay module or a logic-level
+MOSFET module (gate via 220 ohm, 10 k to GND, 1N5819 across the coil) gives it the full 12 V.
 
 Join every ground: servo supply, 12 V supply and the board. Add a 1000 µF capacitor
 across V+ and GND on the PCA9685. Never power the servos from the Nano's 5 V pin.
 The full magnet wiring diagram is in [cad/README.md](cad/README.md#wiring).
 
 **End effector.** The gripper and its servo come off. A KK-P20/15 magnet (12 V,
-about 0.2 A, Ø20 × 15 mm) goes on, in the printed spring-loaded housing from `cad/`. On arms
-without a wrist-roll servo, such as the RoboWings kit, the housing bolts under the old
-gripper plate (`TOOL_MOUNT = "plate"`). On arms with a roll servo, it can sit on that
-servo's horn instead (`"inline"`), with roll held fixed, because a round magnet has no
-orientation.
+about 0.2 A, 20 x 15 mm) hangs from the printed hanger (`cad/magnet_hanger.scad`,
+`stl/magnet_hanger_petg.stl`) on two 4 mm pegs in holes drilled through the forearm. It
+swings freely, so the face always points down whatever the forearm does; the IK aims the
+pegs and places the face `TOOL_DOWN` below them (`TOOL_MOUNT = "hanging"`). The older
+spring-loaded housing (`TOOL_MOUNT = "rigid"`) is still in `cad/` for arms with a wrist.
 
 ## Install
 
@@ -188,7 +233,14 @@ python sorter.py                    # full system
 python sorter.py --no-arm           # vision + reachability preview, nothing moves
 python sorter.py --sim              # everything except the real arm
 python sorter.py --no-yolo          # force the HSV fallback
+python demo.py --port auto          # scripted picks at the spots in demo.PARTS, live camera window
+python demo.py --port auto --calibrate   # the arm parks the magnet at 6 known spots; click it each time
 ```
+
+`demo.py` is what ran on the bench. The parts sit at measured spots (no detection), but every
+move is planned by the same `plan()` as the sorter, so it exercises IK, limits, the protocol
+and the magnet sequence exactly. `--port auto` finds the USB port; `SERIAL_PORT` in
+`config.py` is the ESP32's Wi-Fi address for the TCP mode.
 
 Window keys: `q` parks, then quits. `space` pauses. `r` retries skipped spots.
 Each run writes `runs/picks_<time>.csv` with label, position, source, result and cycle
@@ -198,10 +250,10 @@ time per pick.
 
 | Step | Pose | Magnet |
 |---|---|---|
-| approach | 40 mm above the part, magnet face pointing down | off |
-| descend | 3 mm below the part's top; the spring compresses and the face seats flat | off |
-| magnet on | hold for 250 ms while the coil current builds | **on** |
-| lift | 60 mm up | on |
+| approach | `APPROACH_HEIGHT` (15 mm) above the part, magnet hanging face-down | off |
+| descend | 1 mm below the part's top (`PRESS_DEPTH`): just touching, a deeper press tilts the hanging magnet | off |
+| magnet on | hold for 700 ms while the coil current builds | **on** |
+| lift | `LIFT_HEIGHT` up, slowly (`DESCEND_MS`) | on |
 | to bin, lower | above the bin, then down to drop height | on |
 | magnet off | hold for 400 ms so residual magnetism lets go | **off** |
 | retreat, park | up, then out of the camera's view | off |
@@ -219,12 +271,14 @@ tilted phone does not distort it. The pick point is the outline's centroid, shif
 slightly toward a bolt's heavier head. Each scan uses 5 frames, and a part must appear in
 at least 3 of them.
 
-**IK.** θ1 = atan2(Y, X). The magnet points straight down (pitch −90°) when it can. The
-wrist centre is found by subtracting the magnet head's offset (`TOOL_FORWARD` along the
-last link, `TOOL_DOWN` across it). Shoulder and elbow come from
-the law of cosines (elbow-up). θ4 = pitch − θ2 − θ3. Wrist roll θ5 stays at 0. If −90° is
-out of reach or hits a joint limit, the solver tries nearby pitches. Every solution is
-checked against servo limits and a floor for the tool, wrist and elbow.
+**IK.** th1 = atan2(Y, X). With the hanging magnet (`TOOL_MOUNT = "hanging"`) the target
+for the two-link solver is the hanger pivot, `TOOL_DOWN` straight above the magnet face;
+the face is always level, so there is no pitch to solve. Shoulder and elbow come from the
+law of cosines; both elbow branches are tried, and a branch is rejected if the forearm would
+point up more than `HANG_MAX_FOREARM_UP_DEG` (the hanger would rest on it) or the elbow
+would go below `MIN_ELBOW_Z`. The old rigid-mount model (face fixed to the forearm, pitch
+follows it, `PITCH_CANDIDATES` / `TOOL_PITCH_TOLERANCE_DEG`) is kept behind
+`TOOL_MOUNT = "rigid"`. Every solution is checked against the servo limits in `JOINTS`.
 
 **Edge cases.**
 
@@ -236,8 +290,7 @@ checked against servo limits and a floor for the tool, wrist and elbow.
 | Lost ACK | Packet resent with the same seq; the board ignores duplicates. |
 | Board stops answering | Stop, reconnect once, otherwise park and exit. |
 | Non-magnetic part | Verify sees it still there; it is retried once, then skipped. |
-| PC goes silent | Firmware switches the magnet off after 5 s. |
-| Magnet on too long | Firmware switches it off after 30 s, a coil temperature guard. |
+| PC goes silent / magnet on too long | Firmware cut-offs (5 s silence, 30 s on) exist but are **off** (`MAGNET_AUTO_OFF 0`): they dropped parts during hand-paced tests. Only the PC switches the magnet off. Set it to 1 for unattended runs. |
 
 ## Serial protocol
 
@@ -262,6 +315,16 @@ joint exceeds `MAX_SPEED_DPS`.
   lower than the 3 kg rating. It is still plenty for M3–M8 bolts.
 * **Torque.** Hobby-servo arms are weakest at the shoulder when stretched out. If the arm
   sags at long reach, shrink `WORKSPACE_X` or slow `MAX_SPEED_DPS`.
-* **Tested in simulation only.** The host code passes its tests against a synthetic scene,
-  a simulated arm and a fake serial board. The firmware compiles for the Nano and ESP32.
-  None of it has run on the physical arm yet.
+* **Reach.** With the hanging magnet and the shoulder kept above ~15 deg below level, the
+  face reaches the table only 175-190 mm from the base axis. Parts closer in are out of
+  reach; the base rotation gives the width. The arm cannot pick on its left side: the
+  shoulder tops out just past vertical, so the "left" is only the stable resting direction.
+* **Magnet hold (open).** On the bench the nut is gripped and then released as the lift
+  starts; a flat bolt is not held. To isolate it: `mag 1` in `arm_console.py`, press a nut
+  on the face by hand, then `j 1 120`; if it drops as the arm moves, the 12 V is sagging
+  under servo load: put the magnet and the servos on separate supplies (common GND). If it
+  is weak even at rest, feed the magnet 12 V directly for a second; if that is clearly
+  stronger, replace the L298N with a relay or MOSFET module. Pick bolts by the head.
+* **Vision not yet run on the arm.** `sorter.py` is tested end to end against a synthetic
+  scene, a simulated arm and a fake serial board; the camera stream works. Calibration
+  (`demo.py --calibrate` or `calibrate_camera.py`) and a live sorting run are the next step.
