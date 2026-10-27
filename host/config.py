@@ -21,7 +21,7 @@ HERE = Path(__file__).resolve().parent
 # =============================================================================
 # IP Webcam (Android) MJPEG URL, an RTSP URL, a webcam index like 0,
 # or a path to a still image / video file for offline testing.
-CAMERA_URL = "http://192.168.1.3:8080/video"
+CAMERA_URL = "http://10.196.109.8:8080/video"
 CAMERA_RECONNECT_S = 2.0      # wait between reconnect attempts
 CAMERA_STALE_S = 2.0          # no new frame for this long = camera counts as down
 
